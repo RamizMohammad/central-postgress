@@ -1,0 +1,25 @@
+# Render Blueprint: deploys the panel as a Docker web service next to your
+# existing Render Postgres. Change `fromDatabase.name` to the name of your
+# database as shown in the Render dashboard, then New > Blueprint in Render.
+services:
+  - type: web
+    name: central-postgres
+    runtime: docker
+    plan: starter            # "free" works too, but free services sleep when idle
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL    # Render fills in the *internal* connection string
+        fromDatabase:
+          name: central-postgres-db   # <-- your Render Postgres name
+          property: connectionString
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false          # you'll be asked for it on first deploy
+      - key: SECRET_KEY
+        generateValue: true
+      - key: API_KEYS
+        sync: false          # optional, comma-separated
+      - key: PUBLIC_DB_HOST
+        sync: false          # external hostname, e.g. dpg-xxxx-a.oregon-postgres.render.com
