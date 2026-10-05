@@ -1,8 +1,11 @@
 """central-postgres: a small server + admin panel for a Render Postgres instance."""
 from __future__ import annotations
 
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+import os
+import urllib.request
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 import asyncpg
@@ -20,6 +23,36 @@ log = logging.getLogger("central-postgres")
 STATIC = Path(__file__).resolve().parent.parent / "static"
 
 
+class _SkipHealthz(logging.Filter):
+    """Render and Docker poll /healthz every few seconds; keep it out of the access log."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/healthz" not in record.getMessage()
+
+
+logging.getLogger("uvicorn.access").addFilter(_SkipHealthz())
+
+# Render sets RENDER_EXTERNAL_URL on web services. Pinging the public URL (not
+# localhost) counts as inbound traffic, which is what keeps a free service awake.
+KEEPALIVE_URL = os.getenv("KEEPALIVE_URL") or os.getenv("RENDER_EXTERNAL_URL", "")
+KEEPALIVE_INTERVAL = int(os.getenv("KEEPALIVE_INTERVAL", "20"))
+
+
+def _ping(target: str) -> None:
+    with urllib.request.urlopen(target, timeout=10):
+        pass
+
+
+async def _keepalive(url: str) -> None:
+    target = url.rstrip("/") + "/healthz"
+    while True:
+        await asyncio.sleep(KEEPALIVE_INTERVAL)
+        try:
+            await asyncio.to_thread(_ping, target)
+        except Exception as e:  # 503 when the DB is down, network blips, etc.
+            log.warning("Keep-alive ping to %s failed: %s", target, e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -29,7 +62,15 @@ async def lifespan(app: FastAPI):
         log.warning("Connected to Postgres %s (database %s)", v, settings.default_database)
     except Exception as e:  # keep the panel up so the error is visible there
         log.error("Could not connect to Postgres at startup: %s", e)
+    task = None
+    if KEEPALIVE_URL and KEEPALIVE_INTERVAL > 0:
+        task = asyncio.create_task(_keepalive(KEEPALIVE_URL))
+        log.warning("Keep-alive: pinging %s/healthz every %ss", KEEPALIVE_URL.rstrip("/"), KEEPALIVE_INTERVAL)
     yield
+    if task:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
     await pools.close_all()
 
 
