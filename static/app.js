@@ -800,6 +800,10 @@ async function viewKeys(r, seq) {
                 try { const res = await DEL(`/api/keys/${enc(k.id)}`); toast('Key revoked' + (res.warnings.length ? '\n' + res.warnings.join('\n') : '')); route(); } catch (e) { toastErr(e); }
               }, { class: 'sm danger' })])))))) :
           h('div', { class: 'empty' }, 'No keys yet. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); newKeyModal(); } }, 'Create one'), ' for an app that needs the database from outside this server.')),
+      h('div', { class: 'section' },
+        h('div', { class: 'section-head' }, h('h3', null, 'Connect your app'),
+          h('span', { class: 'muted' }, 'swap YOUR_API_KEY for a key from above')),
+        h('div', { class: 'stack', style: { display: 'flex', flexDirection: 'column', gap: '10px' } }, apiGuide(null, null))),
       h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Admin keys from API_KEYS in .env still work on /api/* (full control). Give apps these scoped keys instead. Interactive docs: ', h('a', { href: '/api/docs#/data%20API%20(app%20keys)', target: '_blank' }, '/api/docs')),
     ],
   });
@@ -849,40 +853,188 @@ async function newKeyModal() {
   route();
 }
 
-function keyUsageModal(k, fullKey) {
-  const key = fullKey || 'YOUR_API_KEY';
-  const base = apiBase();
-  const curl = `curl -X POST ${base}/v1/query \\
+// Ready-to-paste client code for the /v1 data API, shown on the API keys page and in each key's Usage dialog.
+function apiSamples(key, base) {
+  const curl = `# What this key can do
+curl ${base}/v1/me -H "Authorization: Bearer ${key}"
+
+# Tables and columns it can use
+curl ${base}/v1/tables -H "Authorization: Bearer ${key}"
+
+# One statement, values passed as $1, $2…
+curl -X POST ${base}/v1/query \\
   -H "Authorization: Bearer ${key}" \\
   -H "Content-Type: application/json" \\
-  -d '{"sql": "SELECT * FROM users WHERE id = $1", "params": [1]}'`;
-  const py = `import requests
+  -d '{"sql": "SELECT * FROM users WHERE id = $1", "params": [1]}'
+
+# Several statements, all-or-nothing
+curl -X POST ${base}/v1/transaction \\
+  -H "Authorization: Bearer ${key}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"statements": [
+        {"sql": "UPDATE accounts SET balance = balance - $1 WHERE id = $2", "params": [50, 1]},
+        {"sql": "UPDATE accounts SET balance = balance + $1 WHERE id = $2", "params": [50, 2]}
+      ]}'`;
+
+  const py = `# pip install requests
+import os
+import requests
 
 API = "${base}/v1"
-HEADERS = {"Authorization": "Bearer ${key}"}
+KEY = os.environ.get("CENTRAL_PG_KEY", "${key}")  # keep the key in an env var
 
-def query(sql, *params, limit=None):
-    r = requests.post(f"{API}/query", headers=HEADERS,
-                      json={"sql": sql, "params": list(params), "limit": limit}, timeout=30)
-    r.raise_for_status()
-    return r.json()["rows"]
 
-rows = query("SELECT id, name FROM users WHERE created_at > $1", "2026-01-01")`;
-  const js = `const API = "${base}/v1";
-const HEADERS = { "Authorization": "Bearer ${key}", "Content-Type": "application/json" };
+class DBError(Exception):
+    def __init__(self, status, detail):
+        self.status = status
+        self.detail = detail if isinstance(detail, dict) else {"error": detail}
+        super().__init__(f"{status}: {self.detail.get('error')}")
 
-async function query(sql, params = []) {
-  const res = await fetch(\`\${API}/query\`, { method: "POST", headers: HEADERS, body: JSON.stringify({ sql, params }) });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail?.error || data.detail);
-  return data.rows;
+
+class CentralPG:
+    def __init__(self, api=API, key=KEY, timeout=30):
+        self.api = api.rstrip("/")
+        self.s = requests.Session()
+        self.s.headers["Authorization"] = f"Bearer {key}"
+        self.timeout = timeout
+
+    def _call(self, method, path, body=None):
+        r = self.s.request(method, self.api + path, json=body, timeout=self.timeout)
+        data = r.json() if r.content else {}
+        if not r.ok:
+            raise DBError(r.status_code, data.get("detail", r.text))
+        return data
+
+    def query(self, sql, *params, limit=None):
+        """Rows as a list of dicts."""
+        return self._call("POST", "/query", {"sql": sql, "params": list(params), "limit": limit})["rows"]
+
+    def one(self, sql, *params):
+        """First row or None."""
+        rows = self.query(sql, *params, limit=1)
+        return rows[0] if rows else None
+
+    def execute(self, sql, *params):
+        """INSERT / UPDATE / DELETE: number of rows affected."""
+        return self._call("POST", "/query", {"sql": sql, "params": list(params)})["rows_affected"]
+
+    def transaction(self, *statements):
+        """statements: (sql, [params]) tuples. All succeed or none apply."""
+        body = {"statements": [{"sql": s, "params": list(p)} for s, p in statements]}
+        return self._call("POST", "/transaction", body)["results"]
+
+    def tables(self):
+        return self._call("GET", "/tables")
+
+    def me(self):
+        return self._call("GET", "/me")
+
+
+db = CentralPG()
+
+users = db.query("SELECT id, email FROM users WHERE created_at > $1", "2026-01-01")
+user = db.one("SELECT * FROM users WHERE id = $1", 42)
+new = db.one("INSERT INTO users (email) VALUES ($1) RETURNING id", "a@x.com")
+n = db.execute("UPDATE users SET active = $1 WHERE id = $2", False, 42)
+db.transaction(
+    ("UPDATE accounts SET balance = balance - $1 WHERE id = $2", [50, 1]),
+    ("UPDATE accounts SET balance = balance + $1 WHERE id = $2", [50, 2]),
+)
+
+try:
+    db.query("SELECT * FROM missing_table")
+except DBError as e:
+    print(e.status, e.detail.get("pg_code"), e.detail.get("error"))`;
+
+  const js = `// Node 18+ (built-in fetch). Works in Deno / Bun / edge runtimes too.
+const API = "${base}/v1";
+const KEY = process.env.CENTRAL_PG_KEY ?? "${key}"; // keep the key on the server, never in browser code
+
+class DBError extends Error {
+  constructor(status, detail) {
+    const d = typeof detail === "object" && detail ? detail : { error: detail };
+    super(\`\${status}: \${d.error}\`);
+    this.status = status;
+    this.detail = d;
+  }
 }
 
-const rows = await query("SELECT * FROM users WHERE email = $1", ["a@x.com"]);`;
+async function call(method, path, body) {
+  const res = await fetch(API + path, {
+    method,
+    headers: { Authorization: \`Bearer \${KEY}\`, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new DBError(res.status, data.detail ?? res.statusText);
+  return data;
+}
+
+export const db = {
+  /** Rows as an array of objects. */
+  query: async (sql, params = [], limit) => (await call("POST", "/query", { sql, params, limit })).rows,
+  /** First row or null. */
+  one: async (sql, params = []) => (await db.query(sql, params, 1))[0] ?? null,
+  /** INSERT / UPDATE / DELETE: number of rows affected. */
+  execute: async (sql, params = []) => (await call("POST", "/query", { sql, params })).rows_affected,
+  /** [[sql, params], …]: all succeed or none apply. */
+  transaction: async (statements) =>
+    (await call("POST", "/transaction", { statements: statements.map(([sql, params = []]) => ({ sql, params })) })).results,
+  tables: () => call("GET", "/tables"),
+  me: () => call("GET", "/me"),
+};
+
+// usage
+const users = await db.query("SELECT id, email FROM users WHERE created_at > $1", ["2026-01-01"]);
+const user = await db.one("SELECT * FROM users WHERE id = $1", [42]);
+const created = await db.one("INSERT INTO users (email) VALUES ($1) RETURNING id", ["a@x.com"]);
+const n = await db.execute("UPDATE users SET active = $1 WHERE id = $2", [false, 42]);
+await db.transaction([
+  ["UPDATE accounts SET balance = balance - $1 WHERE id = $2", [50, 1]],
+  ["UPDATE accounts SET balance = balance + $1 WHERE id = $2", [50, 2]],
+]);
+
+try {
+  await db.query("SELECT * FROM missing_table");
+} catch (e) {
+  if (e instanceof DBError) console.error(e.status, e.detail.pg_code, e.detail.error);
+}`;
+
+  const responses = `POST /v1/query  →  200
+{
+  "command": "SELECT",
+  "columns": [{"name": "id", "type": "int4"}, {"name": "email", "type": "text"}],
+  "rows": [{"id": 1, "email": "a@x.com"}],
+  "row_count": 1,
+  "rows_affected": null,        // set for INSERT / UPDATE / DELETE
+  "truncated": false,           // true when more rows existed than limit / max_rows
+  "duration_ms": 1.84
+}
+
+POST /v1/transaction  →  200
+{ "results": [ …one /v1/query result per statement… ], "committed": true }
+
+Errors  →  4xx, body: { "detail": … }
+  400  bad SQL or parameter   {"detail": {"error": "relation \\"x\\" does not exist", "pg_code": "42P01", "statement": 0}}
+  401  missing / wrong / revoked / expired key
+  403  IP not allowed, or the key's role lacks the privilege (pg_code 42501)
+  429  rate limit reached; wait for the Retry-After header
+
+Notes
+  • Values always go in "params" ($1, $2…), never pasted into the SQL string.
+  • One statement per /v1/query. Use /v1/transaction for several.
+  • Read-only keys run inside a READ ONLY transaction.
+  • Dates/timestamps come back as ISO-8601 strings; numeric, uuid and json/jsonb as strings
+    (parse json columns yourself, e.g. json.loads / JSON.parse).`;
+
+  return { curl, Python: py, 'Node / JS': js, Responses: responses };
+}
+
+function apiGuide(k, fullKey) {
+  const samples = apiSamples(fullKey || 'YOUR_API_KEY', apiBase());
   const tabsEl = h('div', { class: 'row', style: { gap: '6px' } });
-  const pre = h('pre', { class: 'code', style: { maxHeight: '300px' } });
-  const samples = { curl, Python: py, 'Node / JS': js };
-  let current = 'curl';
+  const pre = h('pre', { class: 'code', style: { maxHeight: '380px' } });
+  let current = 'Python';
   const draw = () => {
     clear(tabsEl);
     for (const name of Object.keys(samples)) tabsEl.appendChild(btn(name, () => { current = name; draw(); }, { class: 'sm' + (name === current ? ' primary' : '') }));
@@ -891,6 +1043,18 @@ const rows = await query("SELECT * FROM users WHERE email = $1", ["a@x.com"]);`;
     pre.textContent = samples[current];
   };
   draw();
+  return [
+    k && h('p', { style: { margin: 0 } }, 'Database ', h('code', null, k.database), ' · access ', h('strong', null, ACCESS_INFO[k.access][0]), ' · schemas ', h('code', null, (k.schemas || []).join(', '))),
+    tabsEl, pre,
+    h('div', { class: 'faint', style: { fontSize: '12.5px', lineHeight: 1.6 } },
+      h('div', null, h('code', null, 'POST /v1/query'), ' — one statement, ', h('code', null, '$1, $2'), ' placeholders + ', h('code', null, 'params'), '. Optional ', h('code', null, 'limit'), ', ', h('code', null, '"row_format": "arrays"'), '.'),
+      h('div', null, h('code', null, 'POST /v1/transaction'), ' — ', h('code', null, '{"statements": [{"sql": …, "params": […]}, …]}'), ', all-or-nothing.'),
+      h('div', null, h('code', null, 'GET /v1/tables'), ' — tables and columns the key can use · ', h('code', null, 'GET /v1/me'), ' — key info.'),
+      h('div', null, 'Auth: ', h('code', null, 'Authorization: Bearer cpk_…'), ' or ', h('code', null, 'X-API-Key: cpk_…'), '. Always pass user input through ', h('code', null, 'params'), ', never by building SQL strings.')),
+  ];
+}
+
+function keyUsageModal(k, fullKey) {
   return modal({
     title: fullKey ? 'API key created' : `Using "${k.name}"`,
     size: 'wide',
@@ -898,13 +1062,7 @@ const rows = await query("SELECT * FROM users WHERE email = $1", ["a@x.com"]);`;
     body: [
       fullKey && field('Your API key', secretBox(fullKey)),
       fullKey && h('div', { class: 'callout' }, 'Copy it now. Only a hash is stored, so it can never be shown again. Lost it? Revoke and create a new one.'),
-      h('p', { style: { margin: 0 } }, 'Database ', h('code', null, k.database), ' · access ', h('strong', null, ACCESS_INFO[k.access][0]), ' · schemas ', h('code', null, (k.schemas || []).join(', '))),
-      tabsEl, pre,
-      h('div', { class: 'faint', style: { fontSize: '12.5px', lineHeight: 1.6 } },
-        h('div', null, h('code', null, 'POST /v1/query'), ' — one statement, ', h('code', null, '$1, $2'), ' placeholders + ', h('code', null, 'params'), '. Optional ', h('code', null, 'limit'), ', ', h('code', null, '"row_format": "arrays"'), '.'),
-        h('div', null, h('code', null, 'POST /v1/transaction'), ' — ', h('code', null, '{"statements": [{"sql": …, "params": […]}, …]}'), ', all-or-nothing.'),
-        h('div', null, h('code', null, 'GET /v1/tables'), ' — tables and columns the key can use · ', h('code', null, 'GET /v1/me'), ' — key info.'),
-        h('div', null, 'Always pass user input through ', h('code', null, 'params'), ', never by building SQL strings.')),
+      ...apiGuide(k, fullKey),
     ],
     actions: [{ label: fullKey ? "I've saved it" : 'Close', primary: true }],
   });
