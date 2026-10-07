@@ -273,6 +273,7 @@ function parseRoute() {
   if (!parts.length || parts[0] === 'overview') return { page: 'overview' };
   if (parts[0] === 'databases') return { page: 'databases' };
   if (parts[0] === 'roles') return { page: 'roles' };
+  if (parts[0] === 'keys') return { page: 'keys' };
   if (parts[0] === 'db' && parts[1]) {
     const db = parts[1];
     if (parts[2] === 'sql') return { page: 'sql', db };
@@ -285,6 +286,7 @@ const link = {
   overview: () => '#/overview',
   databases: () => '#/databases',
   roles: () => '#/roles',
+  keys: () => '#/keys',
   db: (db) => `#/db/${enc(db)}`,
   sql: (db) => `#/db/${enc(db)}/sql`,
   table: (db, s, t, tab = 'data') => `#/db/${enc(db)}/t/${enc(s)}/${enc(t)}/${tab}`,
@@ -391,6 +393,7 @@ function renderSidebar() {
       navItem(link.overview(), 'home', 'Overview', r.page === 'overview'),
       navItem(link.databases(), 'db', 'Databases', r.page === 'databases'),
       navItem(link.roles(), 'users', 'Roles & access', r.page === 'roles'),
+      navItem(link.keys(), 'key', 'API keys', r.page === 'keys'),
       navItem(link.sql(state.db), 'sql', 'SQL console', r.page === 'sql')),
     h('div', { class: 'side-section' },
       h('div', { class: 'side-label' }, 'Database', h('a', { href: link.db(state.db), style: { fontSize: '11.5px' } }, 'open')),
@@ -438,7 +441,7 @@ async function route() {
   }
   if (seq !== renderSeq) return;
   renderSidebar();
-  const views = { overview: viewOverview, databases: viewDatabases, roles: viewRoles, db: viewDb, sql: viewSql, table: viewTable };
+  const views = { overview: viewOverview, databases: viewDatabases, roles: viewRoles, keys: viewKeys, db: viewDb, sql: viewSql, table: viewTable };
   try {
     await views[r.page](r, seq);
   } catch (e) {
@@ -746,6 +749,189 @@ async function grantModal(role) {
     toast(`Updated access for ${role}`);
     await modal({ title: 'Statements executed', size: 'mid', body: h('pre', { class: 'code' }, res.statements.join(';\n') + ';'), actions: [{ label: 'Close', primary: true }] });
   }
+}
+
+// ============================================================ app keys (external API access)
+const ACCESS_INFO = {
+  read: ['Read only', 'SELECT on every table in the chosen schemas'],
+  write: ['Read & write', 'SELECT, INSERT, UPDATE, DELETE — no schema changes'],
+  full: ['Full', 'Everything incl. CREATE / ALTER / DROP tables in the chosen schemas'],
+};
+function apiBase() { return location.origin; }
+
+async function viewKeys(r, seq) {
+  setMain({ title: 'API keys', body: loadingView() });
+  const showRevoked = store.get('keysShowRevoked', false);
+  const keys = await GET(`/api/keys${qs({ include_revoked: showRevoked ? 'true' : '' })}`);
+  if (seq !== renderSeq) return;
+  const statusBadge = (k) => h('span', { class: 'badge ' + ({ active: 'ok', expired: 'warn', revoked: 'danger' }[k.status] || '') }, k.status);
+  const accessBadge = (a) => h('span', { class: 'badge ' + (a === 'full' ? 'warn' : a === 'write' ? 'accent' : '') }, ACCESS_INFO[a][0]);
+  setMain({
+    title: 'API keys',
+    actions: [btn('Refresh', () => route(), { icon: 'refresh' }), btn('New API key', () => newKeyModal(), { class: 'primary', icon: 'plus' })],
+    body: [
+      h('div', { class: 'callout info', style: { marginBottom: '16px' } },
+        'API keys let external apps query one database over HTTPS: ',
+        h('code', null, `POST ${apiBase()}/v1/query`), '. Each key runs as its own restricted Postgres role, so it can only reach the database and schemas you pick.'),
+      h('div', { class: 'section' },
+        h('div', { class: 'section-head' }, h('h3', null, 'Keys'), h('span', { class: 'muted' }, keys.length),
+          h('div', { class: 'actions' }, checkbox('Show revoked', showRevoked, { onchange: (e) => { store.set('keysShowRevoked', e.target.checked); route(); } }))),
+        keys.length ? h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'list' },
+          h('thead', null, h('tr', null, ['Name', 'Database', 'Access', 'Limits', 'Last used', 'Status', ''].map(x => h('th', null, x)))),
+          h('tbody', null, keys.map(k => h('tr', null,
+            h('td', null, h('strong', null, k.name), h('div', { class: 'mono faint', style: { fontSize: '11.5px' } }, k.prefix)),
+            h('td', null, h('a', { href: link.db(k.database) }, k.database), h('div', { class: 'faint', style: { fontSize: '12px' } }, (k.schemas || []).join(', '))),
+            h('td', null, accessBadge(k.access)),
+            h('td', { class: 'muted', style: { fontSize: '12.5px' } },
+              h('div', null, k.rate_limit_per_min ? `${fmtNum(k.rate_limit_per_min)}/min` : 'no rate limit', ' · ', `${fmtNum(k.max_rows)} rows`),
+              h('div', null, k.allowed_ips.length ? 'IPs: ' + k.allowed_ips.join(', ') : 'any IP'),
+              k.expires_at && h('div', null, 'expires ' + new Date(k.expires_at).toLocaleDateString())),
+            h('td', { class: 'muted nowrap', style: { fontSize: '12.5px' } }, k.last_used_at ? since(k.last_used_at) + ' ago' : 'never',
+              k.last_used_ip && h('div', { class: 'mono faint' }, k.last_used_ip), k.use_count ? h('div', { class: 'faint' }, fmtNum(k.use_count) + (k.use_count === 1 ? ' call' : ' calls')) : null),
+            h('td', null, statusBadge(k)),
+            h('td', { class: 'actions' }, k.status !== 'revoked' && [
+              btn('Usage', () => keyUsageModal(k, null), { class: 'sm' }),
+              btn('Edit', () => editKeyModal(k), { class: 'sm' }),
+              btn('Re-sync', async () => {
+                try { const res = await POST(`/api/keys/${enc(k.id)}/sync`); toast(res.warnings.length ? 'Synced with warnings:\n' + res.warnings.join('\n') : 'Grants re-applied'); } catch (e) { toastErr(e); }
+              }, { class: 'sm', title: 'Re-apply permissions, e.g. after creating tables as another user' }),
+              btn('Revoke', async () => {
+                if (!await confirmDanger({ title: `Revoke "${k.name}"?`, message: 'Apps using this key stop working immediately. Tables it created are handed to the database owner.', confirmLabel: 'Revoke key' })) return;
+                try { const res = await DEL(`/api/keys/${enc(k.id)}`); toast('Key revoked' + (res.warnings.length ? '\n' + res.warnings.join('\n') : '')); route(); } catch (e) { toastErr(e); }
+              }, { class: 'sm danger' })])))))) :
+          h('div', { class: 'empty' }, 'No keys yet. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); newKeyModal(); } }, 'Create one'), ' for an app that needs the database from outside this server.')),
+      h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Admin keys from API_KEYS in .env still work on /api/* (full control). Give apps these scoped keys instead. Interactive docs: ', h('a', { href: '/api/docs#/data%20API%20(app%20keys)', target: '_blank' }, '/api/docs')),
+    ],
+  });
+}
+
+async function newKeyModal() {
+  const name = h('input', { class: 'input', placeholder: 'e.g. saathi-mobile-backend', autocomplete: 'off' });
+  const dbSel = select(state.dbs.filter(d => d.can_connect && !['template0', 'template1'].includes(d.name)).map(d => d.name), state.db);
+  const access = select(Object.entries(ACCESS_INFO).map(([k, v]) => [k, `${v[0]} — ${v[1]}`]), 'read');
+  const schemaBox = h('div', { class: 'row', style: { gap: '6px 14px' } });
+  const loadSchemas = async () => {
+    clear(schemaBox).appendChild(h('span', { class: 'faint' }, 'Loading…'));
+    try {
+      const ss = await GET(`/api/db/${enc(dbSel.value)}/schemas`);
+      clear(schemaBox); append(schemaBox, ss.map(s => checkbox(s.name, s.name === 'public')));
+    } catch (e) { clear(schemaBox); toastErr(e); }
+  };
+  dbSel.addEventListener('change', loadSchemas); loadSchemas();
+  const ips = h('input', { class: 'input mono', placeholder: 'any — or e.g. 203.0.113.7, 10.0.0.0/8' });
+  const expires = select([['', 'Never'], ['30', '30 days'], ['90', '90 days'], ['180', '180 days'], ['365', '1 year']], '');
+  const rate = h('input', { class: 'input', type: 'number', value: '600', min: '0' });
+  const maxRows = h('input', { class: 'input', type: 'number', value: '10000', min: '1', max: '100000' });
+  const res = await modal({
+    title: 'New API key',
+    size: 'mid',
+    body: [
+      h('div', { class: 'grid2' }, field('Name', name, 'which app uses it'), field('Database', dbSel)),
+      field('Access', access),
+      field('Schemas', schemaBox),
+      field('Allowed IPs', ips, 'optional, comma-separated IPs or CIDR ranges'),
+      h('div', { class: 'grid2' }, field('Expires', expires), field('Requests per minute', rate, '0 = unlimited')),
+      field('Max rows per query', maxRows),
+    ],
+    actions: [{ label: 'Cancel' }, {
+      label: 'Create key', primary: true, onClick: () => POST('/api/keys', {
+        name: name.value.trim(), database: dbSel.value, access: access.value,
+        schemas: [...schemaBox.querySelectorAll('label.check')].filter(l => l.input && l.input.checked).map(l => l.textContent),
+        allowed_ips: ips.value.split(',').map(x => x.trim()).filter(Boolean),
+        expires_in_days: expires.value ? Number(expires.value) : null,
+        rate_limit_per_min: Number(rate.value || 0), max_rows: Number(maxRows.value || 10000),
+      }),
+    }],
+  });
+  if (!res) return;
+  if (res.warnings && res.warnings.length) toast(res.warnings.join('\n'), 'error', 'Created, with warnings');
+  await keyUsageModal(res, res.key);
+  route();
+}
+
+function keyUsageModal(k, fullKey) {
+  const key = fullKey || 'YOUR_API_KEY';
+  const base = apiBase();
+  const curl = `curl -X POST ${base}/v1/query \\
+  -H "Authorization: Bearer ${key}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"sql": "SELECT * FROM users WHERE id = $1", "params": [1]}'`;
+  const py = `import requests
+
+API = "${base}/v1"
+HEADERS = {"Authorization": "Bearer ${key}"}
+
+def query(sql, *params, limit=None):
+    r = requests.post(f"{API}/query", headers=HEADERS,
+                      json={"sql": sql, "params": list(params), "limit": limit}, timeout=30)
+    r.raise_for_status()
+    return r.json()["rows"]
+
+rows = query("SELECT id, name FROM users WHERE created_at > $1", "2026-01-01")`;
+  const js = `const API = "${base}/v1";
+const HEADERS = { "Authorization": "Bearer ${key}", "Content-Type": "application/json" };
+
+async function query(sql, params = []) {
+  const res = await fetch(\`\${API}/query\`, { method: "POST", headers: HEADERS, body: JSON.stringify({ sql, params }) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail?.error || data.detail);
+  return data.rows;
+}
+
+const rows = await query("SELECT * FROM users WHERE email = $1", ["a@x.com"]);`;
+  const tabsEl = h('div', { class: 'row', style: { gap: '6px' } });
+  const pre = h('pre', { class: 'code', style: { maxHeight: '300px' } });
+  const samples = { curl, Python: py, 'Node / JS': js };
+  let current = 'curl';
+  const draw = () => {
+    clear(tabsEl);
+    for (const name of Object.keys(samples)) tabsEl.appendChild(btn(name, () => { current = name; draw(); }, { class: 'sm' + (name === current ? ' primary' : '') }));
+    tabsEl.appendChild(h('span', { class: 'grow' }));
+    tabsEl.appendChild(btn('Copy', () => copyText(samples[current]), { class: 'sm', icon: 'copy' }));
+    pre.textContent = samples[current];
+  };
+  draw();
+  return modal({
+    title: fullKey ? 'API key created' : `Using "${k.name}"`,
+    size: 'wide',
+    dismissable: !fullKey,
+    body: [
+      fullKey && field('Your API key', secretBox(fullKey)),
+      fullKey && h('div', { class: 'callout' }, 'Copy it now. Only a hash is stored, so it can never be shown again. Lost it? Revoke and create a new one.'),
+      h('p', { style: { margin: 0 } }, 'Database ', h('code', null, k.database), ' · access ', h('strong', null, ACCESS_INFO[k.access][0]), ' · schemas ', h('code', null, (k.schemas || []).join(', '))),
+      tabsEl, pre,
+      h('div', { class: 'faint', style: { fontSize: '12.5px', lineHeight: 1.6 } },
+        h('div', null, h('code', null, 'POST /v1/query'), ' — one statement, ', h('code', null, '$1, $2'), ' placeholders + ', h('code', null, 'params'), '. Optional ', h('code', null, 'limit'), ', ', h('code', null, '"row_format": "arrays"'), '.'),
+        h('div', null, h('code', null, 'POST /v1/transaction'), ' — ', h('code', null, '{"statements": [{"sql": …, "params": […]}, …]}'), ', all-or-nothing.'),
+        h('div', null, h('code', null, 'GET /v1/tables'), ' — tables and columns the key can use · ', h('code', null, 'GET /v1/me'), ' — key info.'),
+        h('div', null, 'Always pass user input through ', h('code', null, 'params'), ', never by building SQL strings.')),
+    ],
+    actions: [{ label: fullKey ? "I've saved it" : 'Close', primary: true }],
+  });
+}
+
+async function editKeyModal(k) {
+  const name = h('input', { class: 'input', value: k.name });
+  const ips = h('input', { class: 'input mono', value: k.allowed_ips.join(', '), placeholder: 'any' });
+  const rate = h('input', { class: 'input', type: 'number', value: String(k.rate_limit_per_min), min: '0' });
+  const maxRows = h('input', { class: 'input', type: 'number', value: String(k.max_rows), min: '1' });
+  const expires = select([['', 'Keep current'], ['0', 'Never'], ['30', '30 days from now'], ['90', '90 days from now'], ['365', '1 year from now']], '');
+  const res = await modal({
+    title: `Edit key "${k.name}"`,
+    body: [field('Name', name), field('Allowed IPs', ips, 'comma-separated; empty = any'),
+      h('div', { class: 'grid2' }, field('Requests per minute', rate), field('Max rows per query', maxRows)),
+      field('Expiry', expires, k.expires_at ? 'currently ' + new Date(k.expires_at).toLocaleDateString() : 'currently never'),
+      h('p', { class: 'faint', style: { margin: 0, fontSize: '12.5px' } }, 'Database and access level are fixed. Create a new key to change them.')],
+    actions: [{ label: 'Cancel' }, {
+      label: 'Save', primary: true, onClick: () => PATCH(`/api/keys/${enc(k.id)}`, {
+        name: name.value.trim() || null,
+        allowed_ips: ips.value.split(',').map(x => x.trim()).filter(Boolean),
+        rate_limit_per_min: Number(rate.value || 0), max_rows: Number(maxRows.value || 1),
+        expires_in_days: expires.value === '' ? null : Number(expires.value),
+      }),
+    }],
+  });
+  if (res) { toast('Key updated'); route(); }
 }
 
 // ============================================================ database home

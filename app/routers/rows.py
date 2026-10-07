@@ -351,9 +351,9 @@ dump_router = APIRouter(prefix="/api", tags=["backup"], dependencies=[Depends(re
 
 @dump_router.get("/databases/{name}/dump")
 async def dump_database(name: str, format: Literal["plain", "custom"] = "plain", schema_only: bool = False):
-    """Stream a pg_dump of a database (needs pg_dump in the image; the Dockerfile installs it)."""
+    """Stream a pg_dump of a database (needs pg_dump on the server; the Docker image does not include it)."""
     if not shutil.which("pg_dump"):
-        raise HTTPException(501, "pg_dump is not installed on this server (use the Docker image)")
+        raise HTTPException(501, "pg_dump is not installed on this server")
     u = urlparse(settings.database_url)
     env = os.environ.copy()
     env.update(

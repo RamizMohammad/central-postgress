@@ -17,7 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from . import auth
 from .config import settings
 from .db import pools
-from .routers import rows, server, sql, tables
+from . import appkeys
+from .routers import data_api, keys, rows, server, sql, tables
 
 log = logging.getLogger("central-postgres")
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -71,6 +72,8 @@ async def lifespan(app: FastAPI):
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+    await appkeys.flush_usage()
+    await appkeys.close_all_key_pools()
     await pools.close_all()
 
 
@@ -128,6 +131,8 @@ app.include_router(tables.router)
 app.include_router(rows.router)
 app.include_router(rows.dump_router)
 app.include_router(sql.router)
+app.include_router(keys.router)
+app.include_router(data_api.router)
 
 
 @app.get("/healthz", include_in_schema=False)
@@ -141,7 +146,8 @@ async def healthz():
         return JSONResponse({"status": "degraded", "database": str(e)}, status_code=503)
 
 
-@app.get("/api/{rest:path}", include_in_schema=False)
+@app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
+@app.api_route("/v1/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
 async def api_404(rest: str):
     raise HTTPException(404, "Not found")
 
