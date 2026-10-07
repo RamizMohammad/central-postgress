@@ -41,6 +41,8 @@ class Settings:
     protected_databases: set[str] = field(default_factory=set)
     public_db_host: str = ""
     public_db_port: str = ""
+    meta_database: str = "postgres"
+    app_key_pool_max: int = 3
 
     @property
     def default_database(self) -> str:
@@ -86,6 +88,8 @@ def load_settings() -> Settings:
         protected_databases=protected,
         public_db_host=os.getenv("PUBLIC_DB_HOST", "").strip(),
         public_db_port=os.getenv("PUBLIC_DB_PORT", "").strip(),
+        meta_database=os.getenv("META_DATABASE", "postgres").strip() or "postgres",
+        app_key_pool_max=int(os.getenv("APP_KEY_POOL_MAX", "3")),
     )
 
 
