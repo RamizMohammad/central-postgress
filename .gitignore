@@ -7,7 +7,5 @@ __pycache__/
 *.dump
 *.sql.gz
 .env.example
-Dockerfile
-docker-compose.yml
 .dockerignore
 nginx/
