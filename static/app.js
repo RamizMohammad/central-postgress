@@ -42,6 +42,7 @@ const ICONS = {
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4z"/>',
   download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  archive: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/>',
   upload: '<path d="M12 20V9M7 14l5-5 5 5M5 4h14"/>',
   filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
   play: '<path d="M7 4l13 8-13 8z"/>',
@@ -82,6 +83,11 @@ function fmtBytes(b) {
   let i = 0; let v = Number(b);
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
   return (i === 0 ? v : v.toFixed(v < 10 ? 1 : 0)) + ' ' + u[i];
+}
+function until(ms) {
+  const s = Math.max(0, (ms - Date.now()) / 1000);
+  if (s < 3600) return Math.ceil(s / 60) + 'm';
+  return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
 }
 function shortNum(n) {
   if (n == null) return '';
@@ -173,7 +179,8 @@ function toastErr(e, title = 'Something went wrong') {
  * If onClick returns false (or throws), the modal stays open.
  */
 function modal({ title, body, size = '', actions = [], dismissable = true }) {
-  return new Promise((resolve) => {
+  let closeFn = null;
+  const p = new Promise((resolve) => {
     const prevFocus = document.activeElement;
     const close = (val) => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(val); prevFocus && prevFocus.focus && prevFocus.focus(); };
     const onKey = (e) => {
@@ -200,9 +207,12 @@ function modal({ title, body, size = '', actions = [], dismissable = true }) {
     const overlay = h('div', { class: 'overlay', onmousedown: (e) => { if (e.target === overlay && dismissable) close(null); } }, m);
     document.body.appendChild(overlay);
     document.addEventListener('keydown', onKey);
+    closeFn = close;
     const first = m.querySelector('input:not([type=checkbox]), textarea, select');
     if (first) setTimeout(() => first.focus(), 20);
   });
+  p.close = (v = null) => closeFn && closeFn(v);
+  return p;
 }
 function confirmDanger({ title, message, confirmLabel = 'Delete', typeToConfirm = null, extra = null }) {
   const input = typeToConfirm ? h('input', { class: 'input mono', placeholder: typeToConfirm, autocomplete: 'off' }) : null;
@@ -274,6 +284,7 @@ function parseRoute() {
   if (parts[0] === 'databases') return { page: 'databases' };
   if (parts[0] === 'roles') return { page: 'roles' };
   if (parts[0] === 'keys') return { page: 'keys' };
+  if (parts[0] === 'backups') return { page: 'backups' };
   if (parts[0] === 'db' && parts[1]) {
     const db = parts[1];
     if (parts[2] === 'sql') return { page: 'sql', db };
@@ -287,6 +298,7 @@ const link = {
   databases: () => '#/databases',
   roles: () => '#/roles',
   keys: () => '#/keys',
+  backups: () => '#/backups',
   db: (db) => `#/db/${enc(db)}`,
   sql: (db) => `#/db/${enc(db)}/sql`,
   table: (db, s, t, tab = 'data') => `#/db/${enc(db)}/t/${enc(s)}/${enc(t)}/${tab}`,
@@ -394,6 +406,7 @@ function renderSidebar() {
       navItem(link.databases(), 'db', 'Databases', r.page === 'databases'),
       navItem(link.roles(), 'users', 'Roles & access', r.page === 'roles'),
       navItem(link.keys(), 'key', 'API keys', r.page === 'keys'),
+      navItem(link.backups(), 'archive', 'Backup & restore', r.page === 'backups'),
       navItem(link.sql(state.db), 'sql', 'SQL console', r.page === 'sql')),
     h('div', { class: 'side-section' },
       h('div', { class: 'side-label' }, 'Database', h('a', { href: link.db(state.db), style: { fontSize: '11.5px' } }, 'open')),
@@ -441,7 +454,7 @@ async function route() {
   }
   if (seq !== renderSeq) return;
   renderSidebar();
-  const views = { overview: viewOverview, databases: viewDatabases, roles: viewRoles, keys: viewKeys, db: viewDb, sql: viewSql, table: viewTable };
+  const views = { overview: viewOverview, databases: viewDatabases, roles: viewRoles, keys: viewKeys, backups: viewBackups, db: viewDb, sql: viewSql, table: viewTable };
   try {
     await views[r.page](r, seq);
   } catch (e) {
@@ -749,6 +762,340 @@ async function grantModal(role) {
     toast(`Updated access for ${role}`);
     await modal({ title: 'Statements executed', size: 'mid', body: h('pre', { class: 'code' }, res.statements.join(';\n') + ';'), actions: [{ label: 'Close', primary: true }] });
   }
+}
+
+// ============================================================ full-server backup & restore
+const KIND_LABEL = { bundle: ['Full server', 'accent'], dump: ['Database dump', ''], sql: ['SQL file', ''], unknown: ['Unknown', 'warn'] };
+
+async function viewBackups(r, seq) {
+  setMain({ title: 'Backup & restore', body: loadingView() });
+  const [st, files] = await Promise.all([GET('/api/backup/status'), GET('/api/backup/files')]);
+  if (seq !== renderSeq) return;
+  const job = st.job;
+  const running = job && (job.status === 'running' || job.status === 'queued');
+  const toolsBad = !st.tools.ok;
+
+  const jobBox = job ? jobPanel(job, seq) : null;
+  const auto = st.auto.every_hours > 0
+    ? h('div', null, h('div', { class: 'v', style: { fontSize: '17px' } }, `every ${st.auto.every_hours}h`),
+      h('div', { class: 's' }, `keeps last ${st.auto.keep}` + (st.auto.next_run ? ` · next in ${until(st.auto.next_run * 1000)}` : '')))
+    : h('div', null, h('div', { class: 'v', style: { fontSize: '17px' } }, 'off'), h('div', { class: 's' }, 'set AUTO_BACKUP_HOURS in .env'));
+
+  setMain({
+    title: 'Backup & restore',
+    actions: [
+      btn('Refresh', () => route(), { icon: 'refresh' }),
+      btn('Upload backup', () => uploadBackup(st), { icon: 'upload', disabled: running }),
+      btn('Create full backup', () => fullBackupModal(st), { class: 'primary', icon: 'archive', disabled: running || toolsBad }),
+    ],
+    body: [
+      toolsBad && h('div', { class: 'callout', style: { marginBottom: '16px' } }, st.tools.message),
+      h('div', { class: 'cards' },
+        h('div', { class: 'card' }, h('div', { class: 'k' }, 'Server'), h('div', { class: 'v', style: { fontSize: '17px' } }, 'PostgreSQL ' + st.server.major),
+          h('div', { class: 's' }, st.server.user + (st.server.superuser ? ' · superuser' : ' · not superuser'))),
+        h('div', { class: 'card' }, h('div', { class: 'k' }, 'Backup folder'), h('div', { class: 'v', style: { fontSize: '17px' } }, fmtBytes(st.disk.free_bytes) + ' free'),
+          h('div', { class: 's mono' }, st.backup_dir)),
+        h('div', { class: 'card' }, h('div', { class: 'k' }, 'Automatic backups'), auto),
+        h('div', { class: 'card' }, h('div', { class: 'k' }, 'Tools'), h('div', { class: 'v', style: { fontSize: '17px' } }, st.tools.versions.pg_dump ? 'pg_dump ' + st.tools.versions.pg_dump : 'missing'),
+          h('div', { class: 's' }, st.tools.ok ? 'ready' : 'see note above'))),
+      jobBox,
+      h('div', { class: 'section' },
+        h('div', { class: 'section-head' }, h('h3', null, 'Backups on this server'), h('span', { class: 'muted' }, files.length)),
+        files.length ? h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'list' },
+          h('thead', null, h('tr', null, ['Backup', 'Type', 'Contents', 'Size', 'Created', ''].map(x => h('th', null, x)))),
+          h('tbody', null, files.map(f => {
+            const [label, cls] = KIND_LABEL[f.kind] || KIND_LABEL.unknown;
+            return h('tr', null,
+              h('td', null, h('span', { class: 'mono', style: { fontSize: '12.5px' } }, f.name), f.error && h('div', { class: 'faint', style: { fontSize: '12px' } }, f.error)),
+              h('td', null, h('span', { class: 'badge ' + cls }, label)),
+              h('td', { class: 'muted', style: { fontSize: '12.5px', maxWidth: '340px' } },
+                f.kind === 'bundle' ? [
+                  h('div', null, `${f.databases.length} database${f.databases.length === 1 ? '' : 's'}: `, f.databases.join(', ')),
+                  h('div', { class: 'faint' }, (f.includes_roles ? 'roles' + (f.includes_passwords ? ' + passwords' : ' (no passwords)') : 'no roles') + ' · from PostgreSQL ' + f.source.server_major),
+                ] : f.kind === 'unknown' ? '—' : 'one database'),
+              h('td', { class: 'num nowrap' }, fmtBytes(f.size_bytes)),
+              h('td', { class: 'nowrap muted' }, since(f.created_at || f.modified) + ' ago'),
+              h('td', { class: 'actions' },
+                f.kind !== 'unknown' && btn('Restore…', () => restoreModal(f.name), { class: 'sm primary', disabled: running }),
+                btn('', () => download(`/api/backup/files/${enc(f.name)}`), { class: 'sm icon', icon: 'download', title: 'Download' }),
+                btn('', async () => {
+                  if (!await confirmDanger({ title: 'Delete this backup?', message: f.name, confirmLabel: 'Delete' })) return;
+                  try { await DEL(`/api/backup/files/${enc(f.name)}`); toast('Deleted'); route(); } catch (e) { toastErr(e); }
+                }, { class: 'sm icon danger', icon: 'trash', title: 'Delete' })));
+          })))) :
+          h('div', { class: 'empty' }, 'No backups yet. Create a full backup, or upload one from another server.')),
+      h('div', { class: 'section' },
+        h('div', { class: 'section-head' }, h('h3', null, 'Moving to a new server')),
+        h('div', { class: 'section-body', style: { lineHeight: 1.7 } },
+          h('ol', { style: { margin: 0, paddingLeft: '20px' } },
+            h('li', null, 'Here: ', h('strong', null, 'Create full backup'), ', then download it (', icon('download', 13), ').'),
+            h('li', null, 'On the new server: deploy this panel pointed at an empty Postgres, sign in, open ', h('strong', null, 'Backup & restore'), '.'),
+            h('li', null, h('strong', null, 'Upload backup'), ' → ', h('strong', null, 'Restore'), '. Roles, passwords, databases, owners, grants, settings and API keys come back as they were.')),
+          h('p', { class: 'faint', style: { margin: '8px 0 0', fontSize: '12.5px' } }, 'Full backups contain password hashes and all your data: store and share them like secrets.'))),
+    ],
+  });
+}
+
+function jobPanel(job, seq) {
+  const bar = h('i', { style: { width: '0%' } });
+  const status = h('span', { class: 'badge' });
+  const step = h('span', { class: 'muted' });
+  const logEl = h('pre', { class: 'code', style: { maxHeight: '260px', fontSize: '12px', whiteSpace: 'pre-wrap' } });
+  const extra = h('div', { class: 'row', style: { gap: '8px' } });
+  const box = h('div', { class: 'section' },
+    h('div', { class: 'section-head' }, h('h3', null, job.title), status, step),
+    h('div', { class: 'section-body stack', style: { gap: '10px' } }, h('div', { class: 'bar', style: { marginTop: 0 } }, bar), logEl, extra));
+  let offset = 0;
+  const lines = [];
+  const paint = (j) => {
+    const pct = j.total ? Math.round((j.done / j.total) * 100) : (j.status === 'done' ? 100 : 5);
+    bar.style.width = (j.status === 'done' ? 100 : pct) + '%';
+    bar.style.background = j.status === 'failed' ? 'var(--danger)' : j.status === 'done' ? 'var(--ok)' : '';
+    status.className = 'badge ' + ({ done: 'ok', failed: 'danger', running: 'accent' }[j.status] || '');
+    status.textContent = j.status + (j.warnings ? ` · ${j.warnings} warning${j.warnings === 1 ? '' : 's'}` : '');
+    step.textContent = j.step || (j.finished ? 'finished ' + since(new Date(j.finished * 1000).toISOString()) + ' ago' : '');
+    lines.push(...j.log);
+    offset = j.log_offset;
+    const nearBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 30;
+    logEl.textContent = lines.join('\n') || 'Starting…';
+    if (nearBottom) logEl.scrollTop = logEl.scrollHeight;
+    clear(extra);
+    if (j.status === 'done' && j.result && j.result.file) {
+      extra.appendChild(btn('Download ' + j.result.file, () => download(`/api/backup/files/${enc(j.result.file)}`), { class: 'sm primary', icon: 'download' }));
+    }
+  };
+  // first paint: fetch whole log
+  (async () => {
+    try {
+      let j = await GET(`/api/backup/jobs/${enc(job.id)}?since=0`);
+      paint(j);
+      while ((j.status === 'running' || j.status === 'queued') && seq === renderSeq) {
+        await new Promise(res => setTimeout(res, 900));
+        if (seq !== renderSeq) return;
+        j = await GET(`/api/backup/jobs/${enc(job.id)}?since=${offset}`);
+        paint(j);
+        if (j.status === 'done' || j.status === 'failed') {
+          toast(j.status === 'done' ? `${j.title}: done` + (j.warnings ? ` with ${j.warnings} warning(s)` : '') : `${j.title} failed`, j.status === 'done' ? 'ok' : 'error');
+          setTimeout(() => { if (seq === renderSeq) route(); }, 600);
+          if (j.kind === 'restore') { loadDatabases().then(() => loadSchemaAndTables()).then(() => renderSidebar()).catch(() => {}); }
+        }
+      }
+    } catch (e) {
+      if (e.status === 404) { logEl.textContent = 'This job is no longer available (the server restarted).'; return; }
+      toastErr(e);
+    }
+  })();
+  return box;
+}
+
+async function fullBackupModal(st) {
+  const dbs = (await GET('/api/databases')).filter(d => d.can_connect);
+  const boxes = dbs.map(d => {
+    const c = checkbox(d.name, true);
+    c.dataset.db = d.name;
+    return h('div', { class: 'row', style: { justifyContent: 'space-between', gap: '8px' } }, c,
+      h('span', { class: 'faint', style: { fontSize: '12px' } },
+        d.name === 'postgres' ? 'panel settings & API keys · ' : '', fmtBytes(d.size_bytes)));
+  });
+  const roles = checkbox('Roles / users, memberships and role settings', true);
+  const pw = checkbox('Include password hashes (so users keep their passwords)', st.server.superuser, { disabled: !st.server.superuser });
+  roles.input.addEventListener('change', () => { pw.input.disabled = !roles.input.checked || !st.server.superuser; });
+  const total = dbs.reduce((a, d) => a + (d.size_bytes || 0), 0);
+  const res = await modal({
+    title: 'Create full backup',
+    size: 'mid',
+    body: [
+      field('Databases', h('div', { class: 'stack', style: { gap: '6px' } },
+        h('div', null, btn('All', () => boxes.forEach(b => { b.firstChild.input.checked = true; }), { class: 'sm ghost' }),
+          btn('None', () => boxes.forEach(b => { b.firstChild.input.checked = false; }), { class: 'sm ghost' })),
+        boxes)),
+      roles, pw,
+      !st.server.superuser && h('div', { class: 'callout' }, 'The panel is not connected as a superuser, so password hashes can\'t be read. Users will need new passwords after a restore.'),
+      h('p', { class: 'faint', style: { margin: 0, fontSize: '12.5px' } },
+        `About ${fmtBytes(total)} of data, usually much smaller compressed. Free space: ${fmtBytes(st.disk.free_bytes)}. The backup runs in the background; you can leave this page.`),
+    ],
+    actions: [{ label: 'Cancel' }, {
+      label: 'Start backup', primary: true, onClick: () => {
+        const selected = boxes.filter(b => b.firstChild.input.checked).map(b => b.firstChild.dataset.db);
+        if (!selected.length) { toast('Pick at least one database', 'error'); return false; }
+        return POST('/api/backup/full', {
+          databases: selected.length === dbs.length ? null : selected,
+          include_roles: roles.input.checked, include_passwords: pw.input.checked && !pw.input.disabled,
+        });
+      },
+    }],
+  });
+  if (res) { toast('Backup started'); route(); }
+}
+
+function uploadBackup(st) {
+  const input = h('input', { type: 'file', accept: '.tar,.dump,.backup,.sql', style: { display: 'none' } });
+  document.body.appendChild(input);
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    input.remove();
+    if (!file) return;
+    if (file.size > st.upload_max_bytes) { toast(`File is larger than the ${fmtBytes(st.upload_max_bytes)} upload limit`, 'error'); return; }
+    const bar = h('i', { style: { width: '0%' } });
+    const label = h('div', { class: 'muted' }, 'Starting…');
+    let xhr;
+    const closeP = modal({
+      title: `Uploading ${file.name}`, dismissable: false,
+      body: [h('div', { class: 'bar' }, bar), label],
+      actions: [{ label: 'Cancel', onClick: () => { xhr && xhr.abort(); } }],
+    });
+    try {
+      const result = await new Promise((resolve, reject) => {
+        xhr = new XMLHttpRequest();
+        xhr.open('POST', `/api/backup/upload?filename=${enc(file.name)}`);
+        xhr.setRequestHeader('X-CP-Client', 'panel');
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        const t0 = Date.now();
+        xhr.upload.onprogress = (e) => {
+          if (!e.lengthComputable) return;
+          bar.style.width = Math.round((e.loaded / e.total) * 100) + '%';
+          const rate = e.loaded / Math.max(1, (Date.now() - t0) / 1000);
+          label.textContent = `${fmtBytes(e.loaded)} of ${fmtBytes(e.total)} · ${fmtBytes(rate)}/s`;
+        };
+        xhr.upload.onload = () => { label.textContent = 'Checking the file…'; };
+        xhr.onload = () => {
+          let data = null;
+          try { data = JSON.parse(xhr.responseText); } catch { data = { detail: xhr.responseText.slice(0, 300) || `HTTP ${xhr.status}` }; }
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data); else reject(new ApiError(xhr.status, data));
+        };
+        xhr.onerror = () => reject(new Error('Upload failed (network error). If the file is big, check nginx client_max_body_size for /api/backup/upload.'));
+        xhr.onabort = () => reject(new Error('Upload cancelled'));
+        xhr.send(file);
+      });
+      closeP.close();
+      toast('Uploaded');
+      route();
+      restoreModal(result.name, result);
+    } catch (e) {
+      closeP.close();
+      if (e.message !== 'Upload cancelled') toastErr(e, 'Upload failed');
+    }
+  });
+  input.click();
+}
+
+async function restoreModal(name, preloaded) {
+  let info;
+  try { info = preloaded || await GET(`/api/backup/files/${enc(name)}/inspect`); } catch (e) { toastErr(e); return; }
+  const t = info.target;
+  const toolsMissing = !t.tools.ok && /Missing/.test(t.tools.message);
+  if (info.kind === 'bundle') return restoreBundleModal(info, toolsMissing);
+  return restoreFileModal(info, toolsMissing);
+}
+
+async function restoreBundleModal(info, toolsMissing) {
+  const m = info.manifest;
+  const t = info.target;
+  const roles = info.roles || [];
+  const newRoles = roles.filter(r => !r.exists && !r.skipped);
+  const existingRoles = roles.filter(r => r.exists && !r.skipped);
+  const skippedRoles = roles.filter(r => r.skipped);
+  const md5 = roles.filter(r => r.md5_password && !r.skipped);
+
+  const doRoles = checkbox(`Recreate roles / users (${newRoles.length} new` + (existingRoles.length ? `, ${existingRoles.length} already here` : '') + ')', roles.length > 0, { disabled: !roles.length });
+  const doPw = checkbox('Restore their passwords', m.includes_passwords, { disabled: !m.includes_passwords });
+  const updRoles = checkbox(`Also update the ${existingRoles.length} role(s) that already exist here (attributes${m.includes_passwords ? ' and passwords' : ''})`, false, { disabled: !existingRoles.length });
+
+  const rows = info.databases.map(d => {
+    const opts = d.exists
+      ? [['skip', 'Skip (keep what is here)'], ['merge', 'Merge: overwrite objects from the backup'], ...(d.protected ? [] : [['replace', 'Replace: drop and restore']])]
+      : [['create', 'Create'], ['skip', 'Skip']];
+    const def = d.exists ? (d.name === 'postgres' ? 'merge' : 'skip') : 'create';
+    const sel = select(opts, def, { class: 'input sm' });
+    const target = h('input', { class: 'input sm mono', value: d.name, title: 'Restore under a different name', style: { width: '150px' } });
+    const syncT = () => { target.disabled = sel.value !== 'create'; };
+    sel.addEventListener('change', syncT); syncT();
+    const tr = h('tr', null,
+      h('td', null, h('strong', null, d.name), d.name === 'postgres' && h('div', { class: 'faint', style: { fontSize: '11.5px' } }, 'panel settings & API keys'),
+        d.comment && h('div', { class: 'faint', style: { fontSize: '11.5px' } }, d.comment)),
+      h('td', { class: 'muted' }, d.owner),
+      h('td', { class: 'num nowrap' }, fmtBytes(d.size_bytes)),
+      h('td', null, d.exists ? h('span', { class: 'badge warn' }, d.protected ? 'exists · protected' : 'exists here') : h('span', { class: 'badge ok' }, 'new')),
+      h('td', null, sel), h('td', null, target));
+    return { d, sel, target, tr };
+  });
+
+  const res = await modal({
+    title: 'Restore full backup',
+    size: 'wide',
+    body: [
+      toolsMissing && h('div', { class: 'callout' }, info.target.tools.message),
+      h('div', { class: 'callout info' },
+        `Backup from PostgreSQL ${m.source.server_major} (${m.source.user}), made ${since(m.created_at)} ago → into PostgreSQL ${t.server_major} as ${t.user}` + (t.superuser ? ' (superuser)' : '') + '.'),
+      t.server_major < m.source.server_major && h('div', { class: 'callout' }, `This server runs an older PostgreSQL (${t.server_major}) than the backup (${m.source.server_major}). Restoring to an older version can fail for newer features.`),
+      h('div', { class: 'stack', style: { gap: '6px' } },
+        h('h3', null, 'Roles'),
+        roles.length ? [doRoles, h('div', { style: { paddingLeft: '22px' }, class: 'stack' }, doPw, updRoles)] : h('div', { class: 'muted' }, 'This backup has no roles.'),
+        skippedRoles.length > 0 && h('div', { class: 'faint', style: { fontSize: '12.5px' } }, `Left untouched: ${skippedRoles.map(r => r.name).join(', ')} (the admin role on this server).`),
+        md5.length > 0 && h('div', { class: 'faint', style: { fontSize: '12.5px' } }, `${md5.length} role(s) use old MD5 password hashes. They log in only if this server's pg_hba.conf allows md5.`)),
+      h('div', { class: 'stack', style: { gap: '6px' } },
+        h('h3', null, 'Databases'),
+        h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'list' },
+          h('thead', null, h('tr', null, ['Database', 'Owner', 'Size', 'Here', 'Action', 'Restore as'].map(x => h('th', null, x)))),
+          h('tbody', null, rows.map(x => x.tr))))),
+      h('p', { class: 'faint', style: { margin: 0, fontSize: '12.5px' } }, 'Runs in the background with a live log. Errors on single objects are logged as warnings and the restore keeps going.'),
+    ],
+    actions: [{ label: 'Cancel' }, {
+      label: 'Start restore', primary: true, onClick: async () => {
+        if (toolsMissing) { toast(info.target.tools.message, 'error'); return false; }
+        const dbs = rows.map(x => ({ name: x.d.name, action: x.sel.value, target: x.sel.value === 'create' ? x.target.value.trim() : null }));
+        const active = dbs.filter(d => d.action !== 'skip');
+        if (!active.length && !doRoles.input.checked) { toast('Nothing selected', 'error'); return false; }
+        const risky = active.filter(d => d.action === 'replace' || d.action === 'merge');
+        if (risky.length) {
+          const ok = await confirmDanger({
+            title: 'Overwrite existing databases?',
+            message: risky.map(d => `${d.name}: ${d.action === 'replace' ? 'dropped and restored' : 'objects from the backup overwrite what is here'}`).join(' · '),
+            typeToConfirm: 'RESTORE', confirmLabel: 'Restore',
+          });
+          if (!ok) return false;
+        }
+        return POST('/api/backup/restore', {
+          file: info.name, roles: doRoles.input.checked, passwords: doPw.input.checked,
+          update_existing_roles: updRoles.input.checked, databases: dbs,
+        });
+      },
+    }],
+  });
+  if (res) { toast('Restore started'); go(link.backups()); }
+}
+
+async function restoreFileModal(info, toolsMissing) {
+  const target = h('input', { class: 'input mono', value: info.suggested_database || '' });
+  const action = select([['create', 'Create a new database'], ['replace', 'Replace: drop it first if it exists'], ['merge', 'Merge into the existing database']], 'create');
+  const note = h('div', { class: 'faint', style: { fontSize: '12.5px' } });
+  const sync = () => {
+    const ex = (info.exists || []).includes(target.value.trim());
+    note.textContent = ex ? `“${target.value.trim()}” already exists here.` : 'A new database will be created.';
+    if (ex && action.value === 'create') action.value = 'merge';
+  };
+  target.addEventListener('input', sync); sync();
+  const res = await modal({
+    title: `Restore ${info.kind === 'dump' ? 'database dump' : 'SQL file'}`,
+    body: [
+      toolsMissing && h('div', { class: 'callout' }, info.target.tools.message),
+      h('p', { class: 'mono', style: { margin: 0, fontSize: '12.5px' } }, info.name, ' · ', fmtBytes(info.size_bytes)),
+      field('Restore into database', target), note, field('If it exists', action),
+      info.kind === 'sql' && h('p', { class: 'faint', style: { margin: 0, fontSize: '12.5px' } }, 'The SQL file runs with psql; statements that fail are logged and skipped.'),
+    ],
+    actions: [{ label: 'Cancel' }, {
+      label: 'Start restore', primary: true, onClick: async () => {
+        if (toolsMissing) { toast(info.target.tools.message, 'error'); return false; }
+        const tname = target.value.trim();
+        if (!tname) { toast('Enter a database name', 'error'); return false; }
+        if (action.value === 'replace' && (info.exists || []).includes(tname)) {
+          if (!await confirmDanger({ title: `Drop and restore ${tname}?`, message: 'Everything currently in it is deleted first.', typeToConfirm: tname, confirmLabel: 'Replace' })) return false;
+        }
+        return POST('/api/backup/restore', { file: info.name, target: tname, action: action.value });
+      },
+    }],
+  });
+  if (res) { toast('Restore started'); go(link.backups()); }
 }
 
 // ============================================================ app keys (external API access)

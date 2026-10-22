@@ -43,6 +43,10 @@ class Settings:
     public_db_port: str = ""
     meta_database: str = "postgres"
     app_key_pool_max: int = 3
+    backup_dir: str = "/data/backups"
+    auto_backup_hours: float = 0
+    auto_backup_keep: int = 7
+    upload_max_bytes: int = 50 * 1024**3
 
     @property
     def default_database(self) -> str:
@@ -90,6 +94,10 @@ def load_settings() -> Settings:
         public_db_port=os.getenv("PUBLIC_DB_PORT", "").strip(),
         meta_database=os.getenv("META_DATABASE", "postgres").strip() or "postgres",
         app_key_pool_max=int(os.getenv("APP_KEY_POOL_MAX", "3")),
+        backup_dir=os.getenv("BACKUP_DIR", "/data/backups").strip() or "/data/backups",
+        auto_backup_hours=float(os.getenv("AUTO_BACKUP_HOURS", "0") or 0),
+        auto_backup_keep=int(os.getenv("AUTO_BACKUP_KEEP", "7") or 7),
+        upload_max_bytes=int(float(os.getenv("BACKUP_UPLOAD_MAX_GB", "50")) * 1024**3),
     )
 
 

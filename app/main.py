@@ -17,7 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from . import auth
 from .config import settings
 from .db import pools
-from . import appkeys
+from . import appkeys, backup
+from .routers import backup as backup_routes
 from .routers import data_api, keys, rows, server, sql, tables
 
 log = logging.getLogger("central-postgres")
@@ -67,11 +68,16 @@ async def lifespan(app: FastAPI):
     if KEEPALIVE_URL and KEEPALIVE_INTERVAL > 0:
         task = asyncio.create_task(_keepalive(KEEPALIVE_URL))
         log.warning("Keep-alive: pinging %s/healthz every %ss", KEEPALIVE_URL.rstrip("/"), KEEPALIVE_INTERVAL)
+    auto = None
+    if settings.auto_backup_hours > 0:
+        auto = asyncio.create_task(backup.auto_backup_loop())
+        log.warning("Automatic backups every %sh, keeping %s", settings.auto_backup_hours, settings.auto_backup_keep)
     yield
-    if task:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+    for t in (task, auto):
+        if t:
+            t.cancel()
+            with suppress(asyncio.CancelledError):
+                await t
     await appkeys.flush_usage()
     await appkeys.close_all_key_pools()
     await pools.close_all()
@@ -133,6 +139,7 @@ app.include_router(rows.dump_router)
 app.include_router(sql.router)
 app.include_router(keys.router)
 app.include_router(data_api.router)
+app.include_router(backup_routes.router)
 
 
 @app.get("/healthz", include_in_schema=False)
