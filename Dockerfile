@@ -45,11 +45,11 @@ RUN chmod -R a+rX /app
 
 USER appuser
 
-ENV PORT=8000 \
+ENV PORT=8014 \
     BACKUP_DIR=/data/backups
-EXPOSE 8000
+EXPOSE 8014
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT','8000'), timeout=4)" || exit 1
+  CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT','8014'), timeout=4)" || exit 1
 
 CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"]
