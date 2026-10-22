@@ -1,0 +1,31 @@
+services:
+  central-postgres-application:     # not `central-postgres`: that name is the DB container
+    build:
+      context: .
+      args:
+        # pg_dump/pg_restore version: same as (or newer than) your Postgres server's major version
+        PG_MAJOR: "${PG_MAJOR:-18}"
+    container_name: central-postgres-application
+    env_file: .env
+    environment:
+      PORT: "8014"
+    # nginx reaches it over proxy_network; this port is only for local checks.
+    ports:
+      - "127.0.0.1:8014:8014"
+    volumes:
+      # backups live here and survive rebuilds/redeploys
+      - central-postgres-backups:/data/backups
+    networks:
+      - proxy_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m              # pg_dump / pg_restore run inside this container
+
+volumes:
+  central-postgres-backups:
+
+networks:
+  proxy_network:
+    external: true
