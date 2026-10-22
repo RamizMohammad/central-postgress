@@ -2,7 +2,7 @@
 
 A small server + web panel for managing a **Render Postgres** instance (works with any Postgres 13+).
 
-- **Web panel** — create/rename/drop databases, schemas, tables, columns, indexes, constraints and extensions; browse, filter, sort, insert, edit and delete rows; CSV import/export; SQL console; roles, passwords and access grants; live connections; one-click `pg_dump` backups.
+- **Web panel** — create/rename/drop databases, schemas, tables, columns, indexes, constraints and extensions; browse, filter, sort, insert, edit and delete rows; CSV import/export; SQL console; roles, passwords and access grants; live connections; per-database `pg_dump` downloads; **full-server backup & restore** (every database, role, password, grant and API key in one file, restorable on a fresh server from the panel).
 - **REST API** — everything the panel does is a JSON endpoint, so your other services can use it too (API-key auth). Interactive docs at `/api/docs`.
 - **One DB + one user per app** — "New database" can create a dedicated login user that owns it and hands you a ready-to-use `DATABASE_URL`.
 
@@ -21,6 +21,7 @@ central-postgres/
 │       ├── server.py    overview, databases, roles, grants
 │       ├── tables.py    schemas, extensions, tables, columns, indexes, constraints
 │       ├── rows.py      row CRUD, CSV import/export, pg_dump
+│       ├── backup.py    backup & restore endpoints
 │       └── sql.py       SQL console, kill connection
 ├── static/              the panel (index.html, app.js, styles.css)
 ├── Dockerfile · docker-compose.yml · render.yaml
@@ -48,7 +49,7 @@ In `.env`, set at least:
 | `SECRET_KEY` | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `API_KEYS` | optional, comma-separated keys for other services |
 
-Everything else in `.env.example` has sensible defaults. The Backup button needs `pg_dump` on the machine (`brew install libpq` on macOS); the Docker image does not include it, so Backup is unavailable there.
+Everything else in `.env.example` has sensible defaults. Backup & restore needs the PostgreSQL client tools (`pg_dump`, `pg_restore`, `psql`) at a version ≥ your server's. The Docker image installs them (`PG_MAJOR`, default 18). Locally, use `brew install libpq` on macOS.
 
 ## 2. Deploy
 
@@ -101,7 +102,39 @@ Put it behind HTTPS — the panel has full control of your database.
 - **SQL console** — Ctrl/⌘+Enter runs the selection or everything; multi-statement scripts; EXPLAIN ANALYZE; result CSV export; history; snippets; load a `.sql` file (≤5 MB).
 - **Roles & access** — create roles, reset passwords, toggle LOGIN/CREATEDB/CREATEROLE, connection limits, and **Grant access**: read / write / full / revoke on every table in a schema, including tables created later.
 
-## 4. Connecting from outside the server
+## 4. Backup & restore (moving to a new server)
+
+**Backup & restore** in the panel makes a *full server backup*: one `.tar` file containing:
+
+- every database, each as a `pg_dump` custom-format dump (tables, data, indexes, views, functions, triggers, types, sequences, extensions, comments, table-level grants),
+- every role/user with its attributes, password hash, memberships and per-role settings,
+- each database's owner, encoding/locale, connection limit, `ALTER DATABASE … SET` settings and `GRANT … ON DATABASE`,
+- the panel's own data (API keys, in the `postgres` database).
+
+**Move everything to a new server:**
+1. Old server → **Backup & restore → Create full backup**, then download the file.
+2. New server: deploy this panel (same `docker compose up -d --build`), with `DATABASE_URL` pointing at the new, empty Postgres. Sign in.
+3. **Backup & restore → Upload backup**. The restore plan opens:
+   - **Roles**: recreated with their original passwords. The new server's own admin role is never touched.
+   - **Databases**: per database choose *Create*, *Skip*, *Merge* (overwrite the objects in the backup) or *Replace* (drop and restore). You can also restore under a new name.
+4. **Start restore** and watch the live log. Problems with single objects are logged as warnings and the restore carries on.
+
+Apps keep working with the same users and passwords. API keys keep working too, even with a different `SECRET_KEY` (their role passwords re-sync automatically).
+
+**Also:**
+- **Single database**: upload a `.dump` (pg_dump `-Fc`, e.g. from a database's **Backup** button) or a `.sql` file and restore it into a new or existing database.
+- **Automatic backups**: set `AUTO_BACKUP_HOURS=24` and `AUTO_BACKUP_KEEP=7` in `.env`.
+- **Storage**: backups are kept in the `central-postgres-backups` Docker volume, so they survive redeploys. Copy one off the server with `docker cp central-postgres-application:/data/backups/<file> .`, or use the panel's download button.
+- **nginx**: uploads go through the `location /api/backup/upload` block, which has no body-size limit, so large backups upload fine.
+- **Manual restore** without the panel: the `.tar` contains a `README.txt`. In short: `tar -xf`, recreate the roles from `roles.json`, then `createdb` + `pg_restore` for each `databases/NNN.dump`.
+
+Notes:
+- **Password hashes** are only readable when the panel connects as a **superuser** (e.g. your Docker Postgres). On managed Postgres (Render) roles are saved without passwords, and the panel tells you so.
+- Roles with old **MD5** password hashes only log in on the new server if its `pg_hba.conf` allows `md5`. The restore warns about this. Fix it by resetting the password, or by setting `password_encryption = scram-sha-256` and re-setting the password on the old server before you back up.
+- **Versions**: restore into the same or a newer PostgreSQL major version. Set the `PG_MAJOR` build arg to at least the server's version.
+- A full backup contains **all your data and password hashes**. Treat the file like a secret.
+
+## 5. Connecting from outside the server
 
 There are three ways in. Pick per client:
 
@@ -113,7 +146,7 @@ There are three ways in. Pick per client:
 
 Port 5432 is never published to the internet. Bots scan for it constantly.
 
-### 4a. Data API with app keys (`/v1`)
+### 5a. Data API with app keys (`/v1`)
 
 Create a key in the panel under **API keys → New API key**:
 
@@ -167,7 +200,7 @@ Notes:
 - Errors come back as `{"detail": {"error": …, "pg_code": …}}`. A permission problem returns 403, a bad SQL statement or bad value 400, a bad or expired key 401, and the rate limit 429 with a `Retry-After` header.
 - Don't put app keys in browser or mobile front-end code. Call the API from your backend, or treat the key as public and make it a read-only key on non-sensitive data.
 
-### 4b. DBeaver (or psql, TablePlus, a backend on another server)
+### 5b. DBeaver (or psql, TablePlus, a backend on another server)
 
 You need to reach the `central-postgres` container's port 5432 privately. First, on the VPS, make the Postgres container listen on the host's loopback only. In the compose file that runs the `central-postgres` **database** container:
 
@@ -212,7 +245,7 @@ psql postgresql://saathi:PASSWORD@localhost:15432/saathi
 
 Docker-published ports **bypass ufw**, so filtering has to go in the `DOCKER-USER` iptables chain, not ufw.
 
-## 5. Admin API (full control)
+## 6. Admin API (full control)
 
 Admin keys from `API_KEYS` in `.env` can do everything the panel can (create databases, roles, run any SQL). Use them for your own scripts and automation, never in apps. Send `X-API-Key: <one of API_KEYS>` (or `Authorization: Bearer <key>`). Full list at `/api/docs` (click **Authorize**).
 
@@ -252,7 +285,7 @@ For heavy app traffic, connect your services **directly** to Postgres (container
 
 Row values in list responses are returned as text (exactly as Postgres prints them) so nothing is lost for numeric, json, arrays, timestamps, etc. When writing, send strings, numbers, booleans, JSON objects or arrays and Postgres casts them to the column's type.
 
-## 6. Security notes
+## 7. Security notes
 
 - App keys (`cpk_…`) are scoped. Each runs as its own restricted Postgres role in one database. Admin keys (`API_KEYS`) and the panel login give **full control** of the database, including the SQL console. Use a long `ADMIN_PASSWORD`, keep `API_KEYS` secret, and serve over HTTPS.
 - Login is rate-limited (10 failures / 10 min / IP). Sessions are signed, `HttpOnly`, `SameSite=Lax` cookies; cookie-authenticated writes also require a custom header (CSRF guard).
@@ -260,8 +293,8 @@ Row values in list responses are returned as text (exactly as Postgres prints th
 - `postgres`, `template0/1`, the database in `DATABASE_URL` and anything in `PROTECTED_DATABASES` can't be dropped or renamed from the panel.
 - The panel connects as the user in `DATABASE_URL`. On Render that user is not a superuser — the Overview page shows which rights it has (createdb / createrole). Actions it lacks will show Postgres's permission error.
 
-## 7. Render specifics
+## 8. Render specifics
 
 - Render plans cap connections. The panel opens a small pool (`POOL_MAX`, default 5) per database you browse, and idle connections close after 2 minutes.
 - Use the **internal** URL when the panel runs on Render (same region), the **external** URL otherwise; SSL is set automatically (`DB_SSL=auto`).
-- Render's own dashboard backups still apply; the Backup button here is an extra, on-demand `pg_dump`.
+- Render's own dashboard backups still apply. Backup & restore here adds on-demand and scheduled `pg_dump` backups, but without role passwords (Render doesn't give superuser).
