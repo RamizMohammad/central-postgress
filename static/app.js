@@ -145,7 +145,19 @@ class ApiError extends Error {
     return [this.message, b.pg_detail && ('Detail: ' + b.pg_detail), b.pg_hint && ('Hint: ' + b.pg_hint)].filter(Boolean).join('\n');
   }
 }
-async function api(method, path, body, { raw = false } = {}) {
+let inflight = 0;
+let busyTimer = null;
+function busy(delta) {
+  inflight = Math.max(0, inflight + delta);
+  if (inflight && !busyTimer) busyTimer = setTimeout(() => document.body.classList.add('busy'), 120);
+  if (!inflight) { clearTimeout(busyTimer); busyTimer = null; document.body.classList.remove('busy'); }
+}
+async function api(method, path, body, opts2 = {}) {
+  const quiet = path.startsWith('/api/backup/jobs/'); // polled every second; no progress bar
+  if (!quiet) busy(1);
+  try { return await apiCall(method, path, body, opts2); } finally { if (!quiet) busy(-1); }
+}
+async function apiCall(method, path, body, { raw = false } = {}) {
   const opts = { method, headers: { 'X-CP-Client': 'panel' }, credentials: 'same-origin' };
   if (body instanceof FormData) opts.body = body;
   else if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
@@ -406,6 +418,7 @@ let $sidebar, $main, $shell, $content, $crumbs;
 
 function renderShell() {
   clear($app);
+  sidebarSig = '';
   $sidebar = h('aside', { class: 'sidebar' });
   $crumbs = h('div', { class: 'crumbs' });
   $content = h('div', { class: 'content' });
@@ -446,10 +459,28 @@ function initials(s) {
   return ((parts[0] || '?')[0] + (parts[1] ? parts[1][0] : (parts[0] || '').slice(1, 2))).toUpperCase();
 }
 
-function renderSidebar() {
+let sidebarSig = '';
+function syncSidebarActive() {
   if (!$sidebar) return;
   const r = parseRoute();
-  const navItem = (href, ic, label, active, attrs = {}) => h('a', Object.assign({ href, class: active ? 'active' : '' }, attrs), icon(ic), label);
+  $sidebar.querySelectorAll('.nav a[data-pages]').forEach((a) => a.classList.toggle('active', a.dataset.pages.split(',').includes(r.page)));
+  $sidebar.querySelectorAll('.table-list a[data-t]').forEach((a) => {
+    const name = a.dataset.t;
+    a.classList.toggle('active', r.page === 'table' && r.db === state.db && r.schema === state.schema && r.table === name);
+    a.setAttribute('href', link.table(state.db, state.schema, name, r.page === 'table' ? r.tab : 'data'));
+  });
+}
+
+function renderSidebar() {
+  if (!$sidebar) return;
+  const sig = JSON.stringify([state.dbs.map(d => [d.name, d.can_connect]), state.db, state.schema,
+    state.schemas.map(x => [x.name, x.tables]), state.tables.map(t => [t.name, t.kind, t.row_estimate]),
+    state.serverVersion, state.me && [state.me.user, state.me.name]]);
+  if (sig === sidebarSig && $sidebar.firstChild) return syncSidebarActive();
+  sidebarSig = sig;
+  const prevScroll = ($sidebar.querySelector('.side-scroll') || {}).scrollTop || 0;
+  const r = parseRoute();
+  const navItem = (href, ic, label, pages, attrs = {}) => h('a', Object.assign({ href, 'data-pages': pages || null }, attrs), icon(ic), label);
   const dbSel = select(state.dbs.filter(d => d.can_connect).map(d => d.name), state.db, {
     class: 'input sm', onchange: (e) => go(link.db(e.target.value)), 'aria-label': 'Database', title: 'Database',
   });
@@ -469,12 +500,12 @@ function renderSidebar() {
     if (!items.length) listEl.appendChild(h('div', { class: 'empty' }, state.tables.length ? 'No match' : 'No tables in this schema'));
     const frag = document.createDocumentFragment();
     for (const t of items) {
-      const active = r.page === 'table' && r.db === state.db && r.schema === state.schema && r.table === t.name;
-      frag.appendChild(h('a', { href: link.table(state.db, state.schema, t.name, r.page === 'table' ? r.tab : 'data'), class: active ? 'active' : '', title: t.name },
+      frag.appendChild(h('a', { href: link.table(state.db, state.schema, t.name, r.page === 'table' ? r.tab : 'data'), 'data-t': t.name, title: t.name },
         icon(t.kind === 'v' || t.kind === 'm' ? 'view' : 'table', 14), h('span', { class: 'nm' }, t.name),
         h('span', { class: 'count' }, t.kind === 'v' ? 'view' : (t.row_estimate ? shortNum(t.row_estimate) : ''))));
     }
     listEl.appendChild(frag);
+    syncSidebarActive();
   };
   const filter = h('input', {
     class: 'input sm', placeholder: 'Filter tables', value: state.tableFilter, 'aria-label': 'Filter tables',
@@ -491,16 +522,16 @@ function renderSidebar() {
     h('div', { class: 'side-scroll' },
       h('nav', { class: 'nav' },
         h('div', { class: 'nav-label' }, 'Workspace'),
-        navItem(link.overview(), 'home', 'Overview', r.page === 'overview'),
-        navItem(link.databases(), 'db', 'Databases', r.page === 'databases' || r.page === 'db'),
-        navItem(link.sql(state.db), 'terminal', 'SQL console', r.page === 'sql'),
+        navItem(link.overview(), 'home', 'Overview', 'overview'),
+        navItem(link.databases(), 'db', 'Databases', 'databases,db'),
+        navItem(link.sql(state.db), 'terminal', 'SQL console', 'sql'),
         h('div', { class: 'nav-label' }, 'Access'),
-        navItem(link.roles(), 'users', 'Roles & permissions', r.page === 'roles'),
-        navItem(link.keys(), 'key', 'API keys', r.page === 'keys'),
+        navItem(link.roles(), 'users', 'Roles & permissions', 'roles'),
+        navItem(link.keys(), 'key', 'API keys', 'keys'),
         h('div', { class: 'nav-label' }, 'Operations'),
-        navItem(link.backups(), 'archive', 'Backup & restore', r.page === 'backups'),
-        navItem(link.connect(), 'plug', 'Connection guide', r.page === 'connect'),
-        navItem('/api/docs', 'book', 'API reference', false, { target: '_blank', rel: 'noopener' })),
+        navItem(link.backups(), 'archive', 'Backup & restore', 'backups'),
+        navItem(link.connect(), 'plug', 'Connection guide', 'connect'),
+        navItem('/api/docs', 'book', 'API reference', null, { target: '_blank', rel: 'noopener' })),
       h('div', { class: 'explorer' },
         h('div', { class: 'nav-label' }, 'Explorer', state.db && h('a', { href: link.db(state.db) }, 'Open database')),
         h('div', { class: 'explorer-sel' }, dbSel, schemaSel),
@@ -512,6 +543,9 @@ function renderSidebar() {
       h('div', { class: 'who' }, h('b', { title: me.user }, who), h('small', null, me.method === 'google' ? 'Google · ' + me.user : 'Password sign-in')),
       btn('', logout, { class: 'sm ghost icon', icon: 'logout', title: 'Sign out' })),
   ]);
+  syncSidebarActive();
+  const sc = $sidebar.querySelector('.side-scroll');
+  if (sc) sc.scrollTop = prevScroll;
 }
 
 async function logout() {
@@ -524,7 +558,15 @@ async function logout() {
  * setMain({ crumbs: [[label, href]…], title, sub, badges, actions, tabs, body, flush })
  * Non-flush pages scroll as a whole; flush pages (data grid, SQL) manage their own scroll areas.
  */
-function setMain({ crumbs = [], title, sub = null, badges = null, actions = [], tabs = null, body, flush = false, monoTitle = false }) {
+function setMain(opts) {
+  if (opts.loading) return pageLoading(opts);
+  const { crumbs = [], title, sub = null, badges = null, actions = [], tabs = null, body, flush = false, monoTitle = false } = opts;
+  // Same page re-rendered (refresh, save, filter): keep the scroll position.
+  const same = $content.dataset.key === location.hash;
+  const prevTop = $content.scrollTop;
+  const oldGrid = $content.querySelector('.grid-wrap');
+  const gTop = oldGrid ? oldGrid.scrollTop : 0;
+  const gLeft = oldGrid ? oldGrid.scrollLeft : 0;
   clear($crumbs);
   append($crumbs, [crumbs.map((c) => [h('a', { href: c[1] }, c[0]), h('span', { class: 'sep' }, '/')]), h('span', { class: 'cur' }, title)]);
   const head = h('div', { class: 'page-head' },
@@ -534,8 +576,37 @@ function setMain({ crumbs = [], title, sub = null, badges = null, actions = [], 
   $content.className = 'content' + (flush ? ' flush' : '');
   if (flush) append($content, [head, tabs, body]);
   else $content.appendChild(h('div', { class: 'page' }, head, tabs, body));
+  $content.dataset.key = location.hash;
+  if (same) {
+    $content.scrollTop = prevTop;
+    const g = $content.querySelector('.grid-wrap');
+    if (g && oldGrid) { g.scrollTop = gTop; g.scrollLeft = gLeft; }
+  } else {
+    $content.scrollTop = 0;
+  }
   $shell.classList.remove('nav-open');
   document.title = `${title} · central-postgres`;
+  return $content;
+}
+
+/**
+ * Called by views before their data arrives. Instead of blanking the page, the current
+ * content stays up (dimmed when it's a different page) while the top progress bar runs;
+ * a spinner replaces it only if the new page takes longer than 400 ms.
+ */
+function pageLoading(opts) {
+  const same = $content.dataset.key === location.hash;
+  if (!$content.firstChild) return setMain(Object.assign({}, opts, { loading: false, body: loadingView() }));
+  if (same) return $content;
+  $content.classList.add('stale');
+  const seq = renderSeq;
+  const hash = location.hash;
+  setTimeout(() => {
+    if (seq === renderSeq && location.hash === hash && $content.dataset.key !== hash) {
+      setMain(Object.assign({}, opts, { loading: false, body: loadingView() }));
+      $content.dataset.key = '';
+    }
+  }, 400);
   return $content;
 }
 function loadingView() { return h('div', { class: 'loading' }, h('span', { class: 'spinner' }), 'Loading…'); }
@@ -629,7 +700,7 @@ function statCard(label, ic, value, sub, extra) {
 }
 
 async function viewOverview(r, seq) {
-  setMain({ title: 'Overview', body: loadingView() });
+  setMain({ title: 'Overview', body: null, loading: true });
   const o = await GET('/api/overview');
   if (seq !== renderSeq) return;
   const s = o.server;
@@ -706,7 +777,7 @@ async function viewOverview(r, seq) {
 
 // ============================================================ databases
 async function viewDatabases(r, seq) {
-  setMain({ title: 'Databases', body: loadingView() });
+  setMain({ title: 'Databases', body: null, loading: true });
   await loadDatabases();
   if (seq !== renderSeq) return;
   renderSidebar();
@@ -854,7 +925,7 @@ function backupModal(db) {
 
 // ============================================================ roles
 async function viewRoles(r, seq) {
-  setMain({ title: 'Roles & permissions', body: loadingView() });
+  setMain({ title: 'Roles & permissions', body: null, loading: true });
   const roles = await GET('/api/roles');
   if (seq !== renderSeq) return;
   setMain({
@@ -984,7 +1055,7 @@ async function grantModal(role) {
 const KIND_LABEL = { bundle: ['Full server', 'accent'], dump: ['Database dump', ''], sql: ['SQL file', ''], unknown: ['Unknown', 'warn'] };
 
 async function viewBackups(r, seq) {
-  setMain({ title: 'Backup & restore', body: loadingView() });
+  setMain({ title: 'Backup & restore', body: null, loading: true });
   const [st, files] = await Promise.all([GET('/api/backup/status'), GET('/api/backup/files')]);
   if (seq !== renderSeq) return;
   const job = st.job;
@@ -1324,7 +1395,7 @@ const ACCESS_INFO = {
 function apiBase() { return location.origin; }
 
 async function viewKeys(r, seq) {
-  setMain({ title: 'API keys', body: loadingView() });
+  setMain({ title: 'API keys', body: null, loading: true });
   const showRevoked = store.get('keysShowRevoked', false);
   const keys = await GET(`/api/keys${qs({ include_revoked: showRevoked ? 'true' : '' })}`);
   if (seq !== renderSeq) return;
@@ -1669,7 +1740,7 @@ function codeBlock(text) {
 }
 
 async function viewConnect(r, seq) {
-  setMain({ title: 'Connection guide', body: loadingView() });
+  setMain({ title: 'Connection guide', body: null, loading: true });
   const c = await GET('/api/connection-info');
   if (seq !== renderSeq) return;
   const db = state.db || c.database;
@@ -1721,7 +1792,7 @@ async function viewConnect(r, seq) {
 
 // ============================================================ database home
 async function viewDb(r, seq) {
-  setMain({ title: r.db, crumbs: [['Databases', link.databases()]], body: loadingView() });
+  setMain({ title: r.db, crumbs: [['Databases', link.databases()]], body: null, loading: true });
   const [schemas, exts] = await Promise.all([GET(`/api/db/${enc(r.db)}/schemas`), GET(`/api/db/${enc(r.db)}/extensions`)]);
   state.schemas = schemas;
   if (seq !== renderSeq) return;
@@ -1910,7 +1981,7 @@ async function viewData(r, seq, seg, crumbs) {
   const kindBadge = h('span', { class: 'badge' }, KIND_NAME[tbl.kind] || 'table');
   const queryBtn = btn('Query', () => { store.set('sql:' + r.db, `SELECT *\nFROM ${qi(r.schema)}.${qi(r.table)}\nLIMIT 100;`); go(link.sql(r.db)); }, { icon: 'terminal' });
 
-  setMain({ title, crumbs, badges: kindBadge, flush: true, monoTitle: true, actions: [seg, queryBtn], body: loadingView() });
+  setMain({ title, crumbs, badges: kindBadge, flush: true, monoTitle: true, actions: [seg, queryBtn], body: null, loading: true });
   let data;
   try {
     data = await GET(`${tblPath(r)}/rows${qs({
@@ -2225,7 +2296,7 @@ async function importCsvModal(r, cols) {
 
 // ---------- structure
 async function viewStructure(r, seq, seg, crumbs) {
-  setMain({ title: r.table, crumbs, actions: [seg], body: loadingView() });
+  setMain({ title: r.table, crumbs, actions: [seg], body: null, loading: true });
   const t = await GET(tblPath(r));
   if (seq !== renderSeq) return;
   const isTable = t.kind === 'r' || t.kind === 'p';
@@ -2449,7 +2520,7 @@ async function renameTableModal(r, t) {
 
 // ---------- DDL
 async function viewDdl(r, seq, seg, crumbs) {
-  setMain({ title: r.table, crumbs, actions: [seg], body: loadingView() });
+  setMain({ title: r.table, crumbs, actions: [seg], body: null, loading: true });
   const t = await GET(tblPath(r));
   if (seq !== renderSeq) return;
   setMain({
