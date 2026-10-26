@@ -47,6 +47,23 @@ class Settings:
     auto_backup_hours: float = 0
     auto_backup_keep: int = 7
     upload_max_bytes: int = 50 * 1024**3
+    password_login: bool = True
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_allowed_emails: list[str] = field(default_factory=list)
+    google_redirect_url: str = ""
+
+    @property
+    def google_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret and self.google_allowed_emails)
+
+    def email_allowed(self, email: str) -> bool:
+        """Exact addresses, or whole domains written as "@example.com"."""
+        email = (email or "").strip().lower()
+        if not email or "@" not in email:
+            return False
+        domain = "@" + email.rsplit("@", 1)[1]
+        return any(a == email or (a.startswith("@") and a == domain) for a in self.google_allowed_emails)
 
     @property
     def default_database(self) -> str:
@@ -64,8 +81,21 @@ def load_settings() -> Settings:
     if database_url.startswith("postgres://"):
         database_url = "postgresql://" + database_url[len("postgres://"):]
 
+    google_client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    allowed = [e.lower() for e in _list("GOOGLE_ALLOWED_EMAILS")]
+    google_on = bool(google_client_id and google_client_secret and allowed)
+    if (google_client_id or google_client_secret) and not google_on:
+        raise RuntimeError(
+            "Google sign-in needs GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_ALLOWED_EMAILS all set."
+        )
+
+    password_login = _bool("PASSWORD_LOGIN", True)
+    if not password_login and not google_on:
+        raise RuntimeError("PASSWORD_LOGIN=false needs Google sign-in configured, or nobody can log in.")
+
     admin_password = os.getenv("ADMIN_PASSWORD", "")
-    if len(admin_password) < 8:
+    if password_login and len(admin_password) < 8:
         raise RuntimeError("ADMIN_PASSWORD must be set and at least 8 characters long.")
 
     secret_key = os.getenv("SECRET_KEY") or ""
@@ -98,6 +128,11 @@ def load_settings() -> Settings:
         auto_backup_hours=float(os.getenv("AUTO_BACKUP_HOURS", "0") or 0),
         auto_backup_keep=int(os.getenv("AUTO_BACKUP_KEEP", "7") or 7),
         upload_max_bytes=int(float(os.getenv("BACKUP_UPLOAD_MAX_GB", "50")) * 1024**3),
+        password_login=password_login,
+        google_client_id=google_client_id,
+        google_client_secret=google_client_secret,
+        google_allowed_emails=allowed,
+        google_redirect_url=os.getenv("GOOGLE_REDIRECT_URL", "").strip(),
     )
 
 

@@ -54,7 +54,27 @@ const ICONS = {
   shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
   history: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5M12 8v4l3 2"/>',
   file: '<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>',
+  monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  plug: '<path d="M9 3v5M15 3v5"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v4"/>',
+  server: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
+  layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+  activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  gauge: '<path d="M4 18a9 9 0 1 1 16 0"/><path d="M12 13l4-4"/>',
+  hdd: '<path d="M3 13l3-8h12l3 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 13h18M7 16h.01"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
+  chevron: '<path d="M9 6l6 6-6 6"/>',
+  external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  terminal: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  folder: '<path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
+  book: '<path d="M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z"/><path d="M20 4h-6a3 3 0 0 0-3 3"/><path d="M20 4v14h-7"/>',
 };
+const GOOGLE_G = '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.5z"/></svg>';
 function icon(name, size) {
   const s = size || 16;
   return h('span', {
@@ -62,7 +82,7 @@ function icon(name, size) {
     html: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`,
   });
 }
-const LOGO = '<svg width="28" height="28" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#4f7cff"/><ellipse cx="16" cy="10" rx="8" ry="3.2" fill="white"/><path d="M8 10v12c0 1.8 3.6 3.2 8 3.2s8-1.4 8-3.2V10" fill="none" stroke="white" stroke-width="2.2"/><path d="M8 16c0 1.8 3.6 3.2 8 3.2s8-1.4 8-3.2" fill="none" stroke="white" stroke-width="2.2"/></svg>';
+const LOGO = '<svg width="28" height="28" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#2f62ea"/><ellipse cx="16" cy="10" rx="8" ry="3.2" fill="white"/><path d="M8 10v12c0 1.8 3.6 3.2 8 3.2s8-1.4 8-3.2V10" fill="none" stroke="white" stroke-width="2.2"/><path d="M8 16c0 1.8 3.6 3.2 8 3.2s8-1.4 8-3.2" fill="none" stroke="white" stroke-width="2.2"/></svg>';
 
 function btn(label, onClick, opts = {}) {
   return h('button', {
@@ -134,7 +154,7 @@ async function api(method, path, body, { raw = false } = {}) {
   let data = null;
   const text = await res.text();
   try { data = text ? JSON.parse(text) : null; } catch { data = { detail: text }; }
-  if (res.status === 401 && !path.startsWith('/api/auth/login')) {
+  if (res.status === 401 && !path.startsWith('/api/auth/')) {
     state.user = null;
     renderLogin('Your session ended. Please sign in again.');
     throw new ApiError(401, data);
@@ -162,7 +182,8 @@ function download(url) {
 
 // ============================================================ toasts & modals
 function toast(msg, type = 'ok', title) {
-  const el = h('div', { class: 'toast ' + (type === 'error' ? 'error' : '') }, title ? h('div', { class: 't' }, title) : null, msg);
+  const el = h('div', { class: 'toast ' + (type === 'error' ? 'error' : '') }, h('span', { class: 'ti' }, icon(type === 'error' ? 'alert' : 'check')),
+    h('div', null, title ? h('div', { class: 't' }, title) : null, msg));
   document.getElementById('toasts').appendChild(el);
   const all = document.querySelectorAll('#toasts .toast');
   if (all.length > 4) all[0].remove();
@@ -178,7 +199,7 @@ function toastErr(e, title = 'Something went wrong') {
  * Returns a promise resolving to the onClick result (or null when dismissed).
  * If onClick returns false (or throws), the modal stays open.
  */
-function modal({ title, body, size = '', actions = [], dismissable = true }) {
+function modal({ title, body, size = '', actions = [], dismissable = true, drawer = false }) {
   let closeFn = null;
   const p = new Promise((resolve) => {
     const prevFocus = document.activeElement;
@@ -204,7 +225,7 @@ function modal({ title, body, size = '', actions = [], dismissable = true }) {
       h('div', { class: 'modal-head' }, h('h2', null, title), h('button', { class: 'btn ghost icon', onclick: () => close(null), 'aria-label': 'Close' }, icon('x'))),
       h('div', { class: 'modal-body' }, body),
       actions.length ? foot : null);
-    const overlay = h('div', { class: 'overlay', onmousedown: (e) => { if (e.target === overlay && dismissable) close(null); } }, m);
+    const overlay = h('div', { class: 'overlay' + (drawer ? ' drawer' : ''), onmousedown: (e) => { if (e.target === overlay && dismissable) close(null); } }, m);
     document.body.appendChild(overlay);
     document.addEventListener('keydown', onKey);
     closeFn = close;
@@ -267,6 +288,9 @@ function secretBox(value) {
 // ============================================================ state & routing
 const state = {
   user: null,
+  me: null,
+  authCfg: null,
+  serverVersion: null,
   dbs: [],
   db: null,
   schema: store.get('schema', 'public'),
@@ -277,6 +301,7 @@ const state = {
   defaultDb: null,
 };
 let renderSeq = 0;
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 function parseRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
@@ -285,6 +310,7 @@ function parseRoute() {
   if (parts[0] === 'roles') return { page: 'roles' };
   if (parts[0] === 'keys') return { page: 'keys' };
   if (parts[0] === 'backups') return { page: 'backups' };
+  if (parts[0] === 'connect') return { page: 'connect' };
   if (parts[0] === 'db' && parts[1]) {
     const db = parts[1];
     if (parts[2] === 'sql') return { page: 'sql', db };
@@ -299,6 +325,7 @@ const link = {
   roles: () => '#/roles',
   keys: () => '#/keys',
   backups: () => '#/backups',
+  connect: () => '#/connect',
   db: (db) => `#/db/${enc(db)}`,
   sql: (db) => `#/db/${enc(db)}/sql`,
   table: (db, s, t, tab = 'data') => `#/db/${enc(db)}/t/${enc(s)}/${enc(t)}/${tab}`,
@@ -306,39 +333,90 @@ const link = {
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 window.addEventListener('hashchange', () => route());
 
+// ============================================================ theme
+const THEMES = { auto: ['monitor', 'System theme'], light: ['sun', 'Light theme'], dark: ['moon', 'Dark theme'] };
+function applyTheme(t) {
+  if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  else document.documentElement.removeAttribute('data-theme');
+  store.set('theme', t);
+}
+function themeButton() {
+  const b = h('button', { type: 'button', class: 'btn ghost icon' });
+  const paint = () => {
+    const t = store.get('theme', 'auto');
+    clear(b).appendChild(icon(THEMES[t][0]));
+    b.title = THEMES[t][1] + ' (click to change)';
+    b.setAttribute('aria-label', b.title);
+  };
+  b.addEventListener('click', () => {
+    const order = ['auto', 'light', 'dark'];
+    applyTheme(order[(order.indexOf(store.get('theme', 'auto')) + 1) % 3]);
+    paint();
+  });
+  paint();
+  return b;
+}
+
 // ============================================================ login
-function renderLogin(message) {
+async function renderLogin(message) {
+  $shell = null;
+  const params = new URLSearchParams(location.search);
+  if (params.get('auth_error')) {
+    message = params.get('auth_error');
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
+  let cfg = state.authCfg;
+  if (!cfg) {
+    try { cfg = state.authCfg = await api('GET', '/api/auth/config'); } catch { cfg = { password: true, google: false }; }
+  }
   clear($app);
-  const err = h('div', { class: 'err' }, message || '');
-  const user = h('input', { class: 'input', name: 'username', autocomplete: 'username', value: 'admin' });
-  const pass = h('input', { class: 'input', name: 'password', type: 'password', autocomplete: 'current-password' });
-  const submit = h('button', { class: 'btn primary', type: 'submit', style: { height: '36px' } }, 'Sign in');
-  const form = h('form', {
-    onsubmit: async (e) => {
-      e.preventDefault();
-      submit.disabled = true; err.textContent = '';
-      try {
-        const r = await api('POST', '/api/auth/login', { username: user.value, password: pass.value });
-        state.user = r.user;
-        await boot();
-      } catch (ex) { err.textContent = ex.message; pass.select(); } finally { submit.disabled = false; }
-    },
-  },
-  h('div', { class: 'brand' }, h('span', { html: LOGO }), h('div', null, 'central-postgres', h('small', null, 'Database admin panel'))),
-  field('Username', user), field('Password', pass), err, submit);
-  $app.appendChild(h('div', { class: 'login' }, form));
-  setTimeout(() => (user.value ? pass : user).focus(), 20);
+  const err = h('div', { class: 'err', role: 'alert' }, message || '');
+  let first = null;
+  let form = null;
+  if (cfg.password) {
+    const user = h('input', { class: 'input', name: 'username', autocomplete: 'username', value: 'admin' });
+    const pass = h('input', { class: 'input', name: 'password', type: 'password', autocomplete: 'current-password', placeholder: '••••••••' });
+    const submit = h('button', { class: 'btn primary block', type: 'submit' }, 'Sign in');
+    form = h('form', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        submit.disabled = true; err.textContent = '';
+        try {
+          await api('POST', '/api/auth/login', { username: user.value, password: pass.value });
+          await boot();
+        } catch (ex) { err.textContent = ex.message; pass.select(); } finally { submit.disabled = false; }
+      },
+    }, field('Username', user), field('Password', pass), submit);
+    first = user.value ? pass : user;
+  }
+  const google = cfg.google && h('a', { class: 'btn google', href: '/api/auth/google/start' }, h('span', { html: GOOGLE_G, style: { display: 'inline-flex' } }), 'Continue with Google');
+  const card = h('div', { class: 'login-card' },
+    h('div', { class: 'head' },
+      h('span', { html: LOGO.replace(/28/g, '36') }),
+      h('div', null, h('h1', null, 'Sign in to central-postgres'), h('p', null, 'PostgreSQL administration panel'))),
+    h('div', { class: 'body' }, err, google, google && form && h('div', { class: 'divider' }, 'or use password'), form),
+    h('div', { class: 'foot' }, icon('lock', 14), cfg.google ? 'Only approved Google accounts can sign in.' : 'Sessions are signed and expire automatically.'));
+  $app.appendChild(h('div', { class: 'login' }, card, h('div', { class: 'login-under mono' }, location.host)));
+  if (first) setTimeout(() => first.focus(), 20);
 }
 
 // ============================================================ shell
 const $app = document.getElementById('app');
-let $sidebar, $main, $shell;
+let $sidebar, $main, $shell, $content, $crumbs;
 
 function renderShell() {
   clear($app);
   $sidebar = h('aside', { class: 'sidebar' });
-  $main = h('main', { class: 'main' });
-  $shell = h('div', { class: 'shell' }, $sidebar, $main);
+  $crumbs = h('div', { class: 'crumbs' });
+  $content = h('div', { class: 'content' });
+  const topbar = h('header', { class: 'topbar' },
+    btn('', () => $shell.classList.toggle('nav-open'), { class: 'ghost icon menu-btn', icon: 'menu', title: 'Menu' }),
+    $crumbs,
+    h('div', { class: 'spacer' }),
+    h('button', { type: 'button', class: 'search-btn', onclick: () => openPalette() }, icon('search', 14), h('span', { class: 'lbl' }, 'Jump to a table or page…'), h('kbd', null, IS_MAC ? '⌘K' : 'Ctrl K')),
+    themeButton());
+  $main = h('main', { class: 'main' }, topbar, $content);
+  $shell = h('div', { class: 'shell', onclick: (e) => { if (e.target === $shell) $shell.classList.remove('nav-open'); } }, $sidebar, $main);
   $app.appendChild($shell);
 }
 
@@ -362,22 +440,26 @@ async function refreshTables(rerender = true) {
   if (rerender) renderSidebar();
 }
 
+function initials(s) {
+  const base = String(s || '?').split('@')[0].replace(/[._-]+/g, ' ').trim();
+  const parts = base.split(/\s+/).filter(Boolean);
+  return ((parts[0] || '?')[0] + (parts[1] ? parts[1][0] : (parts[0] || '').slice(1, 2))).toUpperCase();
+}
+
 function renderSidebar() {
+  if (!$sidebar) return;
   const r = parseRoute();
-  const navItem = (href, ic, label, active) => h('a', { href, class: active ? 'active' : '' }, icon(ic), label);
-  const dbSel = select(state.dbs.map(d => d.name), state.db, {
-    class: 'input sm',
-    onchange: (e) => go(link.db(e.target.value)),
-    'aria-label': 'Database',
+  const navItem = (href, ic, label, active, attrs = {}) => h('a', Object.assign({ href, class: active ? 'active' : '' }, attrs), icon(ic), label);
+  const dbSel = select(state.dbs.filter(d => d.can_connect).map(d => d.name), state.db, {
+    class: 'input sm', onchange: (e) => go(link.db(e.target.value)), 'aria-label': 'Database', title: 'Database',
   });
   const schemaSel = select(state.schemas.map(s => [s.name, `${s.name} (${s.tables})`]), state.schema, {
-    class: 'input sm',
+    class: 'input sm', 'aria-label': 'Schema', title: 'Schema',
     onchange: async (e) => {
       state.schema = e.target.value; store.set('schema', state.schema);
       await refreshTables();
       if (r.page === 'db') route();
     },
-    'aria-label': 'Schema',
   });
   const listEl = h('div', { class: 'table-list' });
   const drawList = () => {
@@ -385,58 +467,76 @@ function renderSidebar() {
     const f = state.tableFilter.toLowerCase();
     const items = state.tables.filter(t => !f || t.name.toLowerCase().includes(f));
     if (!items.length) listEl.appendChild(h('div', { class: 'empty' }, state.tables.length ? 'No match' : 'No tables in this schema'));
+    const frag = document.createDocumentFragment();
     for (const t of items) {
       const active = r.page === 'table' && r.db === state.db && r.schema === state.schema && r.table === t.name;
-      listEl.appendChild(h('a', { href: link.table(state.db, state.schema, t.name, r.page === 'table' ? r.tab : 'data'), class: active ? 'active' : '', title: t.name },
-        icon(t.kind === 'v' || t.kind === 'm' ? 'view' : 'table', 14), h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis' } }, t.name),
+      frag.appendChild(h('a', { href: link.table(state.db, state.schema, t.name, r.page === 'table' ? r.tab : 'data'), class: active ? 'active' : '', title: t.name },
+        icon(t.kind === 'v' || t.kind === 'm' ? 'view' : 'table', 14), h('span', { class: 'nm' }, t.name),
         h('span', { class: 'count' }, t.kind === 'v' ? 'view' : (t.row_estimate ? shortNum(t.row_estimate) : ''))));
     }
+    listEl.appendChild(frag);
   };
   const filter = h('input', {
-    class: 'input sm', placeholder: 'Filter tables…', value: state.tableFilter,
+    class: 'input sm', placeholder: 'Filter tables', value: state.tableFilter, 'aria-label': 'Filter tables',
     oninput: (e) => { state.tableFilter = e.target.value; drawList(); },
   });
   drawList();
 
+  const me = state.me || { user: state.user };
+  const who = me.name && me.name !== me.user ? me.name : me.user;
   clear($sidebar);
   append($sidebar, [
-    h('div', { class: 'brand' }, h('span', { html: LOGO }), h('div', null, 'central-postgres', h('small', null, state.dbs.length + ' databases'))),
-    h('nav', { class: 'nav' },
-      navItem(link.overview(), 'home', 'Overview', r.page === 'overview'),
-      navItem(link.databases(), 'db', 'Databases', r.page === 'databases'),
-      navItem(link.roles(), 'users', 'Roles & access', r.page === 'roles'),
-      navItem(link.keys(), 'key', 'API keys', r.page === 'keys'),
-      navItem(link.backups(), 'archive', 'Backup & restore', r.page === 'backups'),
-      navItem(link.sql(state.db), 'sql', 'SQL console', r.page === 'sql')),
-    h('div', { class: 'side-section' },
-      h('div', { class: 'side-label' }, 'Database', h('a', { href: link.db(state.db), style: { fontSize: '11.5px' } }, 'open')),
-      dbSel,
-      h('div', { class: 'side-label' }, 'Schema'),
-      schemaSel,
-      h('div', { class: 'side-label' }, 'Tables', btn('New', () => newTableModal(), { class: 'sm ghost', icon: 'plus' })),
-      filter),
-    listEl,
-    h('div', { class: 'side-foot' }, h('span', null, 'Signed in as ', h('strong', null, state.user)),
+    h('div', { class: 'brand' }, h('span', { html: LOGO }), h('div', null, 'central-postgres', h('small', null, state.serverVersion ? 'PostgreSQL ' + state.serverVersion : 'Database admin'))),
+    h('div', { class: 'server-chip', title: 'Panel host' }, h('span', { class: 'dot' }), h('span', { class: 'mono' }, location.host)),
+    h('div', { class: 'side-scroll' },
+      h('nav', { class: 'nav' },
+        h('div', { class: 'nav-label' }, 'Workspace'),
+        navItem(link.overview(), 'home', 'Overview', r.page === 'overview'),
+        navItem(link.databases(), 'db', 'Databases', r.page === 'databases' || r.page === 'db'),
+        navItem(link.sql(state.db), 'terminal', 'SQL console', r.page === 'sql'),
+        h('div', { class: 'nav-label' }, 'Access'),
+        navItem(link.roles(), 'users', 'Roles & permissions', r.page === 'roles'),
+        navItem(link.keys(), 'key', 'API keys', r.page === 'keys'),
+        h('div', { class: 'nav-label' }, 'Operations'),
+        navItem(link.backups(), 'archive', 'Backup & restore', r.page === 'backups'),
+        navItem(link.connect(), 'plug', 'Connection guide', r.page === 'connect'),
+        navItem('/api/docs', 'book', 'API reference', false, { target: '_blank', rel: 'noopener' })),
+      h('div', { class: 'explorer' },
+        h('div', { class: 'nav-label' }, 'Explorer', state.db && h('a', { href: link.db(state.db) }, 'Open database')),
+        h('div', { class: 'explorer-sel' }, dbSel, schemaSel),
+        h('div', { class: 'searchbox' }, icon('search', 13), filter)),
+      listEl,
+      state.db && h('div', { class: 'side-new' }, btn('New table', () => newTableModal(), { class: 'sm', icon: 'plus' }))),
+    h('div', { class: 'side-foot' },
+      h('div', { class: 'avatar', title: me.user }, initials(who)),
+      h('div', { class: 'who' }, h('b', { title: me.user }, who), h('small', null, me.method === 'google' ? 'Google · ' + me.user : 'Password sign-in')),
       btn('', logout, { class: 'sm ghost icon', icon: 'logout', title: 'Sign out' })),
   ]);
 }
 
 async function logout() {
   try { await POST('/api/auth/logout'); } catch { /* ignore */ }
-  state.user = null;
+  state.user = null; state.me = null;
   renderLogin();
 }
 
-function setMain({ crumbs = [], title, actions = [], tabs = null, body, flush = false }) {
-  clear($main);
-  const topbar = h('div', { class: 'topbar' },
-    btn('', () => $shell.classList.toggle('nav-open'), { class: 'ghost icon menu-btn', icon: 'menu' }),
-    h('div', { class: 'crumbs' }, crumbs.map((c) => [h('a', { href: c[1] }, c[0]), h('span', { class: 'sep' }, '/')]), h('strong', null, title)),
-    h('div', { class: 'actions' }, actions));
-  const content = h('div', { class: 'content' + (flush ? ' flush' : '') }, body);
-  append($main, [topbar, tabs, content]);
+/**
+ * setMain({ crumbs: [[label, href]…], title, sub, badges, actions, tabs, body, flush })
+ * Non-flush pages scroll as a whole; flush pages (data grid, SQL) manage their own scroll areas.
+ */
+function setMain({ crumbs = [], title, sub = null, badges = null, actions = [], tabs = null, body, flush = false, monoTitle = false }) {
+  clear($crumbs);
+  append($crumbs, [crumbs.map((c) => [h('a', { href: c[1] }, c[0]), h('span', { class: 'sep' }, '/')]), h('span', { class: 'cur' }, title)]);
+  const head = h('div', { class: 'page-head' },
+    h('div', { class: 'titles' }, h('h1', { class: monoTitle ? 'mono-title' : null }, title, badges), sub && h('div', { class: 'sub' }, sub)),
+    actions && actions.length ? h('div', { class: 'actions' }, actions) : null);
+  clear($content);
+  $content.className = 'content' + (flush ? ' flush' : '');
+  if (flush) append($content, [head, tabs, body]);
+  else $content.appendChild(h('div', { class: 'page' }, head, tabs, body));
   $shell.classList.remove('nav-open');
-  return content;
+  document.title = `${title} · central-postgres`;
+  return $content;
 }
 function loadingView() { return h('div', { class: 'loading' }, h('span', { class: 'spinner' }), 'Loading…'); }
 
@@ -454,60 +554,152 @@ async function route() {
   }
   if (seq !== renderSeq) return;
   renderSidebar();
-  const views = { overview: viewOverview, databases: viewDatabases, roles: viewRoles, keys: viewKeys, backups: viewBackups, db: viewDb, sql: viewSql, table: viewTable };
+  const views = { overview: viewOverview, databases: viewDatabases, roles: viewRoles, keys: viewKeys, backups: viewBackups, connect: viewConnect, db: viewDb, sql: viewSql, table: viewTable };
   try {
     await views[r.page](r, seq);
   } catch (e) {
     if (seq !== renderSeq) return;
     toastErr(e);
-    setMain({ title: 'Error', body: h('div', { class: 'error-box' }, e instanceof ApiError ? e.full : String(e)) });
+    setMain({ title: 'Error', body: h('div', { class: 'error-box', style: { margin: 0 } }, e instanceof ApiError ? e.full : String(e)) });
   }
 }
 
+// ============================================================ command palette (⌘K)
+function openPalette() {
+  if (document.querySelector('.overlay.palette')) return;
+  const pages = [
+    ['Overview', link.overview(), 'home'], ['Databases', link.databases(), 'db'], ['SQL console', link.sql(state.db), 'terminal'],
+    ['Roles & permissions', link.roles(), 'users'], ['API keys', link.keys(), 'key'], ['Backup & restore', link.backups(), 'archive'],
+    ['Connection guide', link.connect(), 'plug'],
+  ];
+  const input = h('input', { placeholder: 'Search tables, databases and pages…', 'aria-label': 'Search', autocomplete: 'off', spellcheck: 'false' });
+  const list = h('div', { class: 'palette-list' });
+  let items = [];
+  let active = 0;
+  const overlay = h('div', { class: 'overlay palette', onmousedown: (e) => { if (e.target === overlay) close(); } },
+    h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' },
+      h('div', { class: 'palette-input' }, icon('search', 18), input, h('kbd', null, 'esc')),
+      list,
+      h('div', { class: 'palette-foot' }, h('span', null, h('kbd', null, '↑'), ' ', h('kbd', null, '↓'), ' navigate'), h('span', null, h('kbd', null, '↵'), ' open'))));
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true); };
+  const pick = (it) => { close(); if (it) go(it.href); };
+  const draw = () => {
+    const q = input.value.trim().toLowerCase();
+    const match = (s) => !q || s.toLowerCase().includes(q);
+    const groups = [
+      ['Tables in ' + (state.db || '') + '.' + state.schema, state.tables.filter(t => match(t.name)).slice(0, 30).map(t => ({ label: t.name, href: link.table(state.db, state.schema, t.name), ic: t.kind === 'v' || t.kind === 'm' ? 'view' : 'table', hint: t.row_estimate ? shortNum(t.row_estimate) + ' rows' : '' }))],
+      ['Databases', state.dbs.filter(d => d.can_connect && match(d.name)).map(d => ({ label: d.name, href: link.db(d.name), ic: 'db', hint: fmtBytes(d.size_bytes) }))],
+      ['Pages', pages.filter(p => match(p[0])).map(p => ({ label: p[0], href: p[1], ic: p[2], hint: '' }))],
+    ];
+    clear(list);
+    items = [];
+    for (const [g, arr] of groups) {
+      if (!arr.length) continue;
+      list.appendChild(h('div', { class: 'palette-group' }, g));
+      for (const it of arr) {
+        const i = items.length;
+        it.el = h('div', { class: 'palette-item', onmousemove: () => { if (active !== i) { active = i; paint(); } }, onclick: () => pick(it) }, icon(it.ic, 15), h('span', { class: 'mono' }, it.label), it.hint && h('span', { class: 'hint' }, it.hint));
+        items.push(it);
+        list.appendChild(it.el);
+      }
+    }
+    if (!items.length) list.appendChild(h('div', { class: 'loading' }, 'Nothing found'));
+    active = 0; paint();
+  };
+  const paint = () => items.forEach((it, i) => { it.el.classList.toggle('active', i === active); if (i === active) it.el.scrollIntoView({ block: 'nearest' }); });
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(items.length - 1, active + 1); paint(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); paint(); }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(items[active]); }
+  };
+  input.addEventListener('input', draw);
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(overlay);
+  draw();
+  setTimeout(() => input.focus(), 10);
+}
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && state.user && $shell) { e.preventDefault(); openPalette(); }
+});
+
 // ============================================================ overview
+function statCard(label, ic, value, sub, extra) {
+  return h('div', { class: 'card' }, h('div', { class: 'k' }, label, icon(ic)), h('div', { class: 'v' }, value), extra, sub != null && h('div', { class: 's' }, sub));
+}
+
 async function viewOverview(r, seq) {
   setMain({ title: 'Overview', body: loadingView() });
   const o = await GET('/api/overview');
   if (seq !== renderSeq) return;
   const s = o.server;
+  const st = o.stats || {};
+  const version = (s.server_version || '').split(' ')[0];
+  if (state.serverVersion !== version) { state.serverVersion = version; renderSidebar(); }
   const pct = Math.min(100, Math.round((s.connections / s.max_connections) * 100));
-  const roleBadges = [
-    s.is_superuser && h('span', { class: 'badge warn' }, 'superuser'),
-    s.can_create_db && h('span', { class: 'badge' }, 'createdb'),
-    s.can_create_role && h('span', { class: 'badge' }, 'createrole'),
-  ];
+  const hit = st.cache_hit_pct;
+  const hitBadge = hit == null ? null : hit >= 99 ? h('span', { class: 'badge ok' }, 'optimal') : hit >= 90 ? h('span', { class: 'badge warn' }, 'fair') : h('span', { class: 'badge danger' }, 'low');
   const maxSize = Math.max(1, ...o.databases.map(d => d.size_bytes || 0));
-  const actBody = o.activity.length ? h('table', { class: 'list' },
+  const largest = [...o.databases].sort((a, b) => (b.size_bytes || 0) - (a.size_bytes || 0)).slice(0, 8);
+
+  const actBody = o.activity.length ? h('div', { class: 'scroll-x' }, h('table', { class: 'list' },
     h('thead', null, h('tr', null, ['PID', 'Database', 'User', 'Application', 'State', 'Client', 'Connected', 'Query', ''].map(x => h('th', null, x)))),
     h('tbody', null, o.activity.map(a => h('tr', null,
       h('td', { class: 'mono' }, a.pid), h('td', null, a.datname), h('td', null, a.usename), h('td', { class: 'muted' }, a.application_name || '—'),
       h('td', null, h('span', { class: 'badge ' + (a.state === 'active' ? 'ok' : a.state && a.state.startsWith('idle in') ? 'warn' : '') }, a.state || '—')),
-      h('td', { class: 'mono muted' }, a.client_addr || 'local'), h('td', { class: 'nowrap' }, since(a.backend_start)),
-      h('td', { class: 'mono', style: { maxWidth: '380px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: a.query }, a.query || ''),
-      h('td', { class: 'actions' }, btn('Kill', async () => {
+      h('td', { class: 'mono muted' }, a.client_addr || 'local'), h('td', { class: 'nowrap muted' }, since(a.backend_start)),
+      h('td', { class: 'mono', style: { maxWidth: '360px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: a.query }, a.query || ''),
+      h('td', { class: 'actions' }, btn('Terminate', async () => {
         if (!await confirmDanger({ title: 'Terminate connection?', message: `This ends backend ${a.pid} (${a.usename} on ${a.datname}).`, confirmLabel: 'Terminate' })) return;
         try { await POST(`/api/connections/${a.pid}/terminate`); toast('Connection terminated'); route(); } catch (e) { toastErr(e); }
-      }, { class: 'sm danger' })))))) : h('div', { class: 'empty' }, 'No other connections');
+      }, { class: 'sm danger' }))))))) : h('div', { class: 'empty' }, 'No other connections right now.');
+
+  const check = (label, sub, level, value) => h('div', null,
+    h('span', { class: 'dot ' + (level === 'ok' ? '' : level) }),
+    h('div', { class: 'k' }, label, h('small', null, sub)),
+    h('span', { class: 'badge ' + (level === 'ok' ? 'ok' : level) }, value));
+  const health = [
+    check('Connection usage', `${s.connections} of ${s.max_connections} slots in use`, pct < 70 ? 'ok' : pct < 90 ? 'warn' : 'danger', pct + '%'),
+    hit != null && check('Cache hit ratio', 'reads served from shared buffers (low right after a restart)', hit >= 99 ? 'ok' : hit >= 90 ? 'warn' : 'danger', hit.toFixed(1) + '%'),
+    check('Idle in transaction', 'sessions holding a transaction open', st.idle_in_tx ? 'warn' : 'ok', String(st.idle_in_tx || 0)),
+    check('Deadlocks', 'since statistics were last reset', st.deadlocks ? 'warn' : 'ok', fmtNum(st.deadlocks || 0)),
+    check('Temp files', 'sorts and hashes spilled to disk', (st.temp_bytes || 0) > 1024 ** 3 ? 'warn' : 'ok', fmtBytes(st.temp_bytes || 0)),
+  ];
 
   setMain({
     title: 'Overview',
-    actions: [btn('Refresh', () => route(), { icon: 'refresh' }), btn('New database', () => newDatabaseModal(), { class: 'primary', icon: 'plus' })],
+    sub: h('span', null, h('span', { class: 'mono' }, 'PostgreSQL ' + version), ' · connected as ', h('strong', null, s.current_user), ' · up ', since(s.started_at)),
+    badges: h('span', { class: 'badge ok' }, 'online'),
+    actions: [btn('Refresh', () => route(), { icon: 'refresh' }), btn('SQL console', () => go(link.sql(state.db)), { icon: 'terminal' }), btn('New database', () => newDatabaseModal(), { class: 'primary', icon: 'plus' })],
     body: [
       h('div', { class: 'cards' },
-        h('div', { class: 'card' }, h('div', { class: 'k' }, 'PostgreSQL'), h('div', { class: 'v' }, (s.server_version || '').split(' ')[0]), h('div', { class: 's' }, 'up ' + since(s.started_at))),
-        h('div', { class: 'card' }, h('div', { class: 'k' }, 'Connections'), h('div', { class: 'v' }, `${s.connections} / ${s.max_connections}`), h('div', { class: 'bar' }, h('i', { style: { width: pct + '%', background: pct > 80 ? 'var(--danger)' : '' } }))),
-        h('div', { class: 'card' }, h('div', { class: 'k' }, 'Total size'), h('div', { class: 'v' }, fmtBytes(o.total_size_bytes)), h('div', { class: 's' }, o.databases.length + ' databases')),
-        h('div', { class: 'card' }, h('div', { class: 'k' }, 'Connected as'), h('div', { class: 'v', style: { fontSize: '17px' } }, s.current_user), h('div', { class: 's badges' }, roleBadges))),
+        statCard('Server', 'server', [h('span', { class: 'dot' }), 'Healthy'], 'up ' + since(s.started_at)),
+        statCard('PostgreSQL', 'layers', version, h('span', { class: 'badges' },
+          s.is_superuser ? h('span', { class: 'badge warn' }, 'superuser') : h('span', { class: 'badge' }, s.current_user),
+          s.can_create_db && h('span', { class: 'badge' }, 'createdb'))),
+        statCard('Databases', 'db', o.databases.length, fmtBytes(o.total_size_bytes) + ' total'),
+        statCard('Connections', 'activity', [String(s.connections), h('small', null, '/ ' + s.max_connections)],
+          `${st.active ?? 0} active · ${st.idle_in_tx ?? 0} idle in tx · ${st.idle ?? 0} idle`,
+          h('div', { class: 'bar' }, h('i', { style: { width: pct + '%', background: pct > 80 ? 'var(--danger)' : '' } }))),
+        statCard('Cache hit ratio', 'gauge', [hit == null ? '—' : hit.toFixed(1) + '%', hitBadge], 'shared_buffers ' + (st.shared_buffers || '—')),
+        statCard('Transactions', 'check', shortNum(st.commits || 0), `${shortNum(st.rollbacks || 0)} rollbacks · ${fmtNum(st.deadlocks || 0)} deadlocks`)),
+      h('div', { class: 'cols' },
+        h('div', { class: 'section' },
+          h('div', { class: 'section-head' }, h('h3', null, 'Largest databases'), h('span', { class: 'count' }, o.databases.length),
+            h('div', { class: 'actions' }, h('a', { href: link.databases(), class: 'small' }, 'View all →'))),
+          h('div', { class: 'scroll-x' }, h('table', { class: 'list' },
+            h('thead', null, h('tr', null, h('th', null, 'Database'), h('th', null, 'Owner'), h('th', null, 'Size'), h('th', { class: 'num' }, 'Conns'))),
+            h('tbody', null, largest.map(d => h('tr', null,
+              h('td', null, h('a', { href: link.db(d.name), class: 'name-cell mono' }, icon('db', 14), d.name)),
+              h('td', { class: 'muted' }, d.owner || '—'),
+              h('td', null, h('div', { class: 'size-cell' }, h('div', { class: 'bar' }, h('i', { style: { width: Math.max(1, ((d.size_bytes || 0) / maxSize) * 100) + '%' } })), h('span', null, fmtBytes(d.size_bytes)))),
+              h('td', { class: 'num' }, d.connections ?? '—'))))))),
+        h('div', { class: 'section' },
+          h('div', { class: 'section-head' }, h('h3', null, 'Health checks')),
+          h('div', { class: 'kv' }, health))),
       h('div', { class: 'section' },
-        h('div', { class: 'section-head' }, h('h3', null, 'Databases'), h('div', { class: 'actions' }, h('a', { href: link.databases() }, 'Manage →'))),
-        h('table', { class: 'list' }, h('tbody', null, o.databases.map(d => h('tr', null,
-          h('td', { style: { width: '30%' } }, h('a', { href: link.db(d.name) }, d.name)),
-          h('td', null, h('div', { class: 'bar', style: { marginTop: 0 } }, h('i', { style: { width: Math.max(1, ((d.size_bytes || 0) / maxSize) * 100) + '%' } }))),
-          h('td', { class: 'num', style: { width: '110px' } }, fmtBytes(d.size_bytes))))))),
-      h('div', { class: 'section' },
-        h('div', { class: 'section-head' }, h('h3', null, 'Active connections'), h('span', { class: 'muted' }, o.activity.length)),
-        h('div', { style: { overflowX: 'auto' } }, actBody)),
-      h('p', { class: 'faint', style: { fontSize: '12px' } }, s.version, ' · API docs at ', h('a', { href: '/api/docs', target: '_blank' }, '/api/docs')),
+        h('div', { class: 'section-head' }, h('h3', null, 'Active connections'), h('span', { class: 'count' }, o.activity.length)),
+        actBody),
     ],
   });
 }
@@ -518,25 +710,43 @@ async function viewDatabases(r, seq) {
   await loadDatabases();
   if (seq !== renderSeq) return;
   renderSidebar();
-  setMain({
-    title: 'Databases',
-    actions: [btn('Refresh', () => route(), { icon: 'refresh' }), btn('New database', () => newDatabaseModal(), { class: 'primary', icon: 'plus' })],
-    body: h('div', { class: 'section' }, h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'list' },
-      h('thead', null, h('tr', null, h('th', null, 'Name'), h('th', null, 'Owner'), h('th', { class: 'num' }, 'Size'), h('th', { class: 'num' }, 'Conns'), h('th', null, 'Encoding'), h('th', null, ''))),
-      h('tbody', null, state.dbs.map(d => h('tr', null,
-        h('td', null, h('div', { class: 'row', style: { gap: '8px' } },
-          d.can_connect ? h('a', { href: link.db(d.name), style: { fontWeight: 600 } }, d.name) : h('span', { style: { fontWeight: 600 } }, d.name),
+  const maxSize = Math.max(1, ...state.dbs.map(d => d.size_bytes || 0));
+  const filter = h('input', { class: 'input sm', placeholder: 'Filter databases', style: { width: '220px' } });
+  const tbody = h('tbody');
+  const draw = () => {
+    const f = filter.value.trim().toLowerCase();
+    clear(tbody);
+    for (const d of state.dbs.filter(x => !f || x.name.toLowerCase().includes(f))) {
+      tbody.appendChild(h('tr', null,
+        h('td', null, h('div', { class: 'name-cell' }, icon('db', 15),
+          d.can_connect ? h('a', { href: link.db(d.name), class: 'mono' }, d.name) : h('span', { class: 'mono' }, d.name),
           d.is_default && h('span', { class: 'badge accent' }, 'default'),
           d.protected && !d.is_default && h('span', { class: 'badge' }, 'protected'),
           !d.can_connect && h('span', { class: 'badge warn' }, 'no access')),
-        d.comment && h('div', { class: 'faint', style: { fontSize: '12px' } }, d.comment)),
-        h('td', null, d.owner), h('td', { class: 'num' }, fmtBytes(d.size_bytes)), h('td', { class: 'num' }, d.connections),
-        h('td', { class: 'muted' }, d.encoding),
+        d.comment && h('div', { class: 'faint small', style: { paddingLeft: '23px' } }, d.comment)),
+        h('td', { class: 'muted' }, d.owner),
+        h('td', null, h('div', { class: 'size-cell' }, h('div', { class: 'bar' }, h('i', { style: { width: Math.max(1, ((d.size_bytes || 0) / maxSize) * 100) + '%' } })), h('span', null, fmtBytes(d.size_bytes)))),
+        h('td', { class: 'num' }, d.connections),
+        h('td', { class: 'muted mono small' }, d.encoding),
         h('td', { class: 'actions' },
-          d.can_connect && btn('SQL', () => go(link.sql(d.name)), { class: 'sm' }),
-          d.can_connect && btn('Backup', () => backupModal(d.name), { class: 'sm', icon: 'download' }),
-          btn('Edit', () => editDatabaseModal(d), { class: 'sm' }),
-          !d.protected && btn('Drop', () => dropDatabase(d), { class: 'sm danger' }))))))))
+          d.can_connect && btn('SQL', () => go(link.sql(d.name)), { class: 'sm ghost', icon: 'terminal' }),
+          d.can_connect && btn('Backup', () => backupModal(d.name), { class: 'sm ghost', icon: 'download' }),
+          btn('Edit', () => editDatabaseModal(d), { class: 'sm ghost', icon: 'edit' }),
+          !d.protected && btn('Drop', () => dropDatabase(d), { class: 'sm danger' }))));
+    }
+    if (!tbody.children.length) tbody.appendChild(h('tr', null, h('td', { colspan: '6', class: 'faint', style: { textAlign: 'center', padding: '24px' } }, 'No match')));
+  };
+  filter.addEventListener('input', draw);
+  draw();
+  setMain({
+    title: 'Databases',
+    sub: `${state.dbs.length} databases on this server · one database and one owner role per app keeps services isolated`,
+    actions: [btn('Refresh', () => route(), { icon: 'refresh' }), btn('New database', () => newDatabaseModal(), { class: 'primary', icon: 'plus' })],
+    body: h('div', { class: 'section' },
+      h('div', { class: 'section-head' }, h('h3', null, 'All databases'), h('span', { class: 'count' }, state.dbs.length), h('div', { class: 'actions' }, filter)),
+      h('div', { class: 'scroll-x' }, h('table', { class: 'list' },
+        h('thead', null, h('tr', null, h('th', null, 'Name'), h('th', null, 'Owner'), h('th', null, 'Size'), h('th', { class: 'num' }, 'Conns'), h('th', null, 'Encoding'), h('th', null, ''))),
+        tbody))),
   });
 }
 
@@ -555,6 +765,7 @@ async function newDatabaseModal() {
   mkUser.input.addEventListener('change', sync); sync();
   const res = await modal({
     title: 'New database',
+    drawer: true,
     body: [field('Database name', name), mkUser, userBox, ownerBox, field('Comment', comment),
       h('div', { class: 'callout info' }, 'Tip: one database + one user per app keeps your services isolated from each other.')],
     actions: [{ label: 'Cancel' }, {
@@ -595,6 +806,7 @@ async function editDatabaseModal(d) {
   const comment = h('input', { class: 'input', value: d.comment || '' });
   const res = await modal({
     title: `Edit ${d.name}`,
+    drawer: true,
     body: [field('Name', name, d.protected ? 'protected' : 'renaming disconnects everyone'), field('Owner', owner), field('Comment', comment)],
     actions: [{ label: 'Cancel' }, {
       label: 'Save', primary: true, onClick: () => PATCH(`/api/databases/${enc(d.name)}`, {
@@ -642,17 +854,18 @@ function backupModal(db) {
 
 // ============================================================ roles
 async function viewRoles(r, seq) {
-  setMain({ title: 'Roles & access', body: loadingView() });
+  setMain({ title: 'Roles & permissions', body: loadingView() });
   const roles = await GET('/api/roles');
   if (seq !== renderSeq) return;
   setMain({
-    title: 'Roles & access',
+    title: 'Roles & permissions',
+    sub: 'Postgres login and group roles. Grant read, write or full access per database schema.',
     actions: [btn('Refresh', () => route(), { icon: 'refresh' }), btn('New role', () => newRoleModal(), { class: 'primary', icon: 'plus' })],
     body: [
       h('div', { class: 'section' }, h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'list' },
         h('thead', null, h('tr', null, ['Role', 'Attributes', 'Member of', 'Owns databases', ''].map(x => h('th', null, x)))),
         h('tbody', null, roles.map(ro => h('tr', null,
-          h('td', null, h('strong', null, ro.name), ro.is_current && h('span', { class: 'badge accent', style: { marginLeft: '6px' } }, 'you')),
+          h('td', null, h('div', { class: 'name-cell' }, h('span', { class: 'avatar', style: { width: '26px', height: '26px', fontSize: '10.5px' } }, ro.name.slice(0, 2).toUpperCase()), h('span', { class: 'mono' }, ro.name), ro.is_current && h('span', { class: 'badge accent' }, 'you'))),
           h('td', null, h('span', { class: 'badges' },
             ro.login ? h('span', { class: 'badge ok' }, 'login') : h('span', { class: 'badge' }, 'group'),
             ro.superuser && h('span', { class: 'badge warn' }, 'superuser'),
@@ -689,6 +902,7 @@ async function newRoleModal() {
   const limit = h('input', { class: 'input', type: 'number', placeholder: 'unlimited', min: '-1' });
   const res = await modal({
     title: 'New role',
+    drawer: true,
     body: [h('div', { class: 'grid2' }, field('Name', name), field('Password', pass)),
       h('div', { class: 'row' }, login, createdb, createrole), field('Connection limit', limit)],
     actions: [{ label: 'Cancel' }, {
@@ -714,6 +928,7 @@ async function editRoleModal(ro) {
   const pass = h('input', { class: 'input mono', placeholder: 'leave blank to keep' });
   const res = await modal({
     title: `Edit role ${ro.name}`,
+    drawer: true,
     body: [field('Name', name, 'renaming clears an MD5 password'), h('div', { class: 'row' }, login, createdb, createrole),
       h('div', { class: 'grid2' }, field('Connection limit', limit, '-1 = unlimited'), field('New password', pass))],
     actions: [{ label: 'Cancel' }, {
@@ -755,6 +970,7 @@ async function grantModal(role) {
   const level = select([['read', 'Read only (SELECT)'], ['write', 'Read & write (SELECT, INSERT, UPDATE, DELETE)'], ['all', 'Full (all privileges + create tables)'], ['none', 'Revoke all']], 'read');
   const res = await modal({
     title: `Grant access to ${role}`,
+    drawer: true,
     body: [h('div', { class: 'grid2' }, field('Database', dbSel), field('Schema', schemaSel)), field('Access level', level)],
     actions: [{ label: 'Cancel' }, { label: 'Apply', primary: true, onClick: () => POST(`/api/db/${enc(dbSel.value)}/grant`, { role, level: level.value, schema: schemaSel.value }) }],
   });
@@ -783,6 +999,7 @@ async function viewBackups(r, seq) {
 
   setMain({
     title: 'Backup & restore',
+    sub: 'Full-server bundles (every database, roles, passwords and API keys) or single-database dumps.',
     actions: [
       btn('Refresh', () => route(), { icon: 'refresh' }),
       btn('Upload backup', () => uploadBackup(st), { icon: 'upload', disabled: running }),
@@ -800,7 +1017,7 @@ async function viewBackups(r, seq) {
           h('div', { class: 's' }, st.tools.ok ? 'ready' : 'see note above'))),
       jobBox,
       h('div', { class: 'section' },
-        h('div', { class: 'section-head' }, h('h3', null, 'Backups on this server'), h('span', { class: 'muted' }, files.length)),
+        h('div', { class: 'section-head' }, h('h3', null, 'Backups on this server'), h('span', { class: 'count' }, files.length)),
         files.length ? h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'list' },
           h('thead', null, h('tr', null, ['Backup', 'Type', 'Contents', 'Size', 'Created', ''].map(x => h('th', null, x)))),
           h('tbody', null, files.map(f => {
@@ -1115,13 +1332,14 @@ async function viewKeys(r, seq) {
   const accessBadge = (a) => h('span', { class: 'badge ' + (a === 'full' ? 'warn' : a === 'write' ? 'accent' : '') }, ACCESS_INFO[a][0]);
   setMain({
     title: 'API keys',
+    sub: 'Scoped keys for external apps. Each key is its own restricted Postgres role on one database.',
     actions: [btn('Refresh', () => route(), { icon: 'refresh' }), btn('New API key', () => newKeyModal(), { class: 'primary', icon: 'plus' })],
     body: [
       h('div', { class: 'callout info', style: { marginBottom: '16px' } },
         'API keys let external apps query one database over HTTPS: ',
         h('code', null, `POST ${apiBase()}/v1/query`), '. Each key runs as its own restricted Postgres role, so it can only reach the database and schemas you pick.'),
       h('div', { class: 'section' },
-        h('div', { class: 'section-head' }, h('h3', null, 'Keys'), h('span', { class: 'muted' }, keys.length),
+        h('div', { class: 'section-head' }, h('h3', null, 'Keys'), h('span', { class: 'count' }, keys.length),
           h('div', { class: 'actions' }, checkbox('Show revoked', showRevoked, { onchange: (e) => { store.set('keysShowRevoked', e.target.checked); route(); } }))),
         keys.length ? h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'list' },
           h('thead', null, h('tr', null, ['Name', 'Database', 'Access', 'Limits', 'Last used', 'Status', ''].map(x => h('th', null, x)))),
@@ -1149,8 +1367,8 @@ async function viewKeys(r, seq) {
           h('div', { class: 'empty' }, 'No keys yet. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); newKeyModal(); } }, 'Create one'), ' for an app that needs the database from outside this server.')),
       h('div', { class: 'section' },
         h('div', { class: 'section-head' }, h('h3', null, 'Connect your app'),
-          h('span', { class: 'muted' }, 'swap YOUR_API_KEY for a key from above')),
-        h('div', { class: 'stack', style: { display: 'flex', flexDirection: 'column', gap: '10px' } }, apiGuide(null, null))),
+          h('div', { class: 'desc' }, 'Swap YOUR_API_KEY for a key from above. Ready-to-paste clients for curl, Python and Node.')),
+        h('div', { class: 'section-body stack', style: { gap: '10px' } }, apiGuide(null, null))),
       h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Admin keys from API_KEYS in .env still work on /api/* (full control). Give apps these scoped keys instead. Interactive docs: ', h('a', { href: '/api/docs#/data%20API%20(app%20keys)', target: '_blank' }, '/api/docs')),
     ],
   });
@@ -1175,7 +1393,7 @@ async function newKeyModal() {
   const maxRows = h('input', { class: 'input', type: 'number', value: '10000', min: '1', max: '100000' });
   const res = await modal({
     title: 'New API key',
-    size: 'mid',
+    drawer: true,
     body: [
       h('div', { class: 'grid2' }, field('Name', name, 'which app uses it'), field('Database', dbSel)),
       field('Access', access),
@@ -1379,14 +1597,13 @@ Notes
 
 function apiGuide(k, fullKey) {
   const samples = apiSamples(fullKey || 'YOUR_API_KEY', apiBase());
-  const tabsEl = h('div', { class: 'row', style: { gap: '6px' } });
+  const seg = h('div', { class: 'seg' });
+  const tabsEl = h('div', { class: 'row', style: { gap: '8px' } }, seg, h('span', { class: 'grow' }), btn('Copy', () => copyText(samples[current]), { class: 'sm', icon: 'copy' }));
   const pre = h('pre', { class: 'code', style: { maxHeight: '380px' } });
   let current = 'Python';
   const draw = () => {
-    clear(tabsEl);
-    for (const name of Object.keys(samples)) tabsEl.appendChild(btn(name, () => { current = name; draw(); }, { class: 'sm' + (name === current ? ' primary' : '') }));
-    tabsEl.appendChild(h('span', { class: 'grow' }));
-    tabsEl.appendChild(btn('Copy', () => copyText(samples[current]), { class: 'sm', icon: 'copy' }));
+    clear(seg);
+    for (const name of Object.keys(samples)) seg.appendChild(h('button', { type: 'button', class: name === current ? 'active' : '', onclick: () => { current = name; draw(); } }, name));
     pre.textContent = samples[current];
   };
   draw();
@@ -1423,6 +1640,7 @@ async function editKeyModal(k) {
   const expires = select([['', 'Keep current'], ['0', 'Never'], ['30', '30 days from now'], ['90', '90 days from now'], ['365', '1 year from now']], '');
   const res = await modal({
     title: `Edit key "${k.name}"`,
+    drawer: true,
     body: [field('Name', name), field('Allowed IPs', ips, 'comma-separated; empty = any'),
       h('div', { class: 'grid2' }, field('Requests per minute', rate), field('Max rows per query', maxRows)),
       field('Expiry', expires, k.expires_at ? 'currently ' + new Date(k.expires_at).toLocaleDateString() : 'currently never'),
@@ -1439,6 +1657,68 @@ async function editKeyModal(k) {
   if (res) { toast('Key updated'); route(); }
 }
 
+// ============================================================ connection guide
+function copyField(label, value) {
+  return h('div', { class: 'copy-field' }, h('label', null, label), h('span', { title: value }, value),
+    btn('', () => copyText(value), { class: 'sm ghost icon', icon: 'copy', title: 'Copy' }));
+}
+function codeBlock(text) {
+  const b = btn('', () => copyText(text), { class: 'sm icon', icon: 'copy', title: 'Copy' });
+  Object.assign(b.style, { position: 'absolute', top: '6px', right: '6px' });
+  return h('div', { style: { position: 'relative' } }, h('pre', { class: 'code' }, text), b);
+}
+
+async function viewConnect(r, seq) {
+  setMain({ title: 'Connection guide', body: loadingView() });
+  const c = await GET('/api/connection-info');
+  if (seq !== renderSeq) return;
+  const db = state.db || c.database;
+  const site = location.hostname;
+  const card = (ic, title, desc, ...body) => h('div', { class: 'section guide-card' },
+    h('div', { class: 'section-head' }, icon(ic, 18), h('h3', null, title), h('div', { class: 'desc' }, desc)),
+    h('div', { class: 'section-body' }, body));
+
+  setMain({
+    title: 'Connection guide',
+    sub: 'How apps, scripts and SQL clients reach this server. Port 5432 is never exposed to the internet.',
+    actions: [btn('Create API key', () => go(link.keys()), { icon: 'key' }), btn('API reference', () => window.open('/api/docs', '_blank'), { icon: 'external' })],
+    body: [
+      h('div', { class: 'section' },
+        h('div', { class: 'section-head' }, h('h3', null, 'Connection details')),
+        h('div', { class: 'section-body copy-grid' },
+          copyField('Panel', location.origin),
+          copyField('Data API', location.origin + '/v1'),
+          copyField('DB host', `${c.host}:${c.port}`),
+          copyField('Database', db),
+          c.public_host && copyField('Public host', `${c.public_host}:${c.public_port || 5432}`))),
+      h('div', { class: 'guide-grid' },
+        card('server', 'Containers on the same server', 'Fastest. Join the same Docker network and use the container name.',
+          h('ol', { class: 'steps' },
+            h('li', null, 'Put the app on the same Docker network as Postgres (', h('code', null, 'proxy_network'), ').'),
+            h('li', null, 'Create a database with its own owner user under ', h('a', { href: link.databases() }, 'Databases'), '.'),
+            h('li', null, 'Set the app\'s ', h('code', null, 'DATABASE_URL'), ':')),
+          codeBlock(`postgresql://USER:PASSWORD@${c.host}:${c.port}/${db}`)),
+        card('key', 'HTTP data API with an API key', 'For apps outside this server: scoped to one database, revocable, rate-limited.',
+          h('ol', { class: 'steps' },
+            h('li', null, 'Create a key under ', h('a', { href: link.keys() }, 'API keys'), ' (read, write or full access).'),
+            h('li', null, 'Call the API from your backend, never from browser or mobile code.')),
+          codeBlock(`curl -X POST ${location.origin}/v1/query \\\n  -H "Authorization: Bearer cpk_…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"sql": "SELECT now()", "params": []}'`)),
+        card('terminal', 'DBeaver / psql over an SSH tunnel', 'Full SQL client features. Needs 5432 bound to 127.0.0.1 on the server.',
+          h('ol', { class: 'steps' },
+            h('li', null, 'New connection → PostgreSQL. Host ', h('code', null, 'localhost'), ', port ', h('code', null, '5432'), ', database ', h('code', null, db), '.'),
+            h('li', null, 'SSH tab: tick ', h('strong', null, 'Use SSH Tunnel'), ', host ', h('code', null, site), ', port 22, public-key auth.'),
+            h('li', null, 'Leave SSL off (the tunnel encrypts), then Test Connection.')),
+          h('div', { class: 'faint small' }, 'Same thing from a terminal:'),
+          codeBlock(`ssh -N -L 15432:127.0.0.1:5432 user@${site}\npsql "postgresql://USER:PASSWORD@localhost:15432/${db}"`)),
+        card('shield', 'Tailscale', 'Private network between your own machines, with no SSH step.',
+          h('ol', { class: 'steps' },
+            h('li', null, 'Publish Postgres on the server\'s Tailscale IP only: ', h('code', null, 'ports: ["100.x.y.z:5432:5432"]'), '.'),
+            h('li', null, 'Connect from any device on your tailnet to ', h('code', null, '100.x.y.z:5432'), ' as a plain connection.')),
+          h('div', { class: 'callout' }, 'Docker-published ports bypass ufw. Never publish 5432 on 0.0.0.0; filter in the DOCKER-USER chain if you ever must.'))),
+    ],
+  });
+}
+
 // ============================================================ database home
 async function viewDb(r, seq) {
   setMain({ title: r.db, crumbs: [['Databases', link.databases()]], body: loadingView() });
@@ -1451,7 +1731,7 @@ async function viewDb(r, seq) {
   const extSel = select(available.map(e => [e.name, `${e.name} ${e.default_version || ''}`]), null, { class: 'input sm', style: { width: '220px' } });
 
   const tablesSection = h('div', { class: 'section' },
-    h('div', { class: 'section-head' }, h('h3', null, 'Tables in ', h('code', null, state.schema)), h('span', { class: 'muted' }, state.tables.length),
+    h('div', { class: 'section-head' }, h('h3', null, 'Tables in ', h('code', null, state.schema)), h('span', { class: 'count' }, state.tables.length),
       h('div', { class: 'actions' }, btn('New table', () => newTableModal(), { class: 'sm primary', icon: 'plus' }))),
     state.tables.length ? h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'list' },
       h('thead', null, h('tr', null, h('th', null, 'Name'), h('th', null, 'Type'), h('th', { class: 'num' }, 'Rows (est.)'), h('th', { class: 'num' }, 'Size'), h('th', null, 'Comment'), h('th', null, ''))),
@@ -1577,6 +1857,7 @@ async function newTableModal() {
   const res = await modal({
     title: `New table in ${state.db}`,
     size: 'wide',
+    drawer: true,
     body: [
       h('div', { class: 'grid2' }, field('Schema', schemaSel), field('Table name', name)),
       h('div', { class: 'stack', style: { gap: '6px' } },
@@ -1607,23 +1888,29 @@ async function newTableModal() {
 }
 
 // ============================================================ table view
+const KIND_NAME = { r: 'table', p: 'partitioned', v: 'view', m: 'mat. view', f: 'foreign' };
 async function viewTable(r, seq) {
-  const tabs = h('div', { class: 'tabs' },
-    ['data', 'structure', 'ddl'].map(t => h('a', { href: link.table(r.db, r.schema, r.table, t), class: r.tab === t ? 'active' : '' }, { data: 'Data', structure: 'Structure', ddl: 'SQL definition' }[t])));
+  const seg = h('div', { class: 'seg' },
+    ['data', 'structure', 'ddl'].map(t => h('a', { href: link.table(r.db, r.schema, r.table, t), class: r.tab === t ? 'active' : '' }, { data: 'Data', structure: 'Structure', ddl: 'Definition' }[t])));
   const crumbs = [[r.db, link.db(r.db)], [r.schema, link.db(r.db)]];
-  if (r.tab === 'structure') return viewStructure(r, seq, tabs, crumbs);
-  if (r.tab === 'ddl') return viewDdl(r, seq, tabs, crumbs);
-  return viewData(r, seq, tabs, crumbs);
+  if (r.tab === 'structure') return viewStructure(r, seq, seg, crumbs);
+  if (r.tab === 'ddl') return viewDdl(r, seq, seg, crumbs);
+  return viewData(r, seq, seg, crumbs);
 }
 const tblPath = (r) => `/api/db/${enc(r.db)}/tables/${enc(r.schema)}/${enc(r.table)}`;
+const FILTER_OPS = [['eq', '='], ['neq', '≠'], ['lt', '<'], ['lte', '≤'], ['gt', '>'], ['gte', '≥'], ['contains', 'contains'], ['ilike', 'ILIKE'], ['like', 'LIKE'], ['not_like', 'NOT LIKE'], ['in', 'in (a,b,c)'], ['is_null', 'is null'], ['not_null', 'is not null']];
 
 // ---------- data grid
-async function viewData(r, seq, tabs, crumbs) {
+async function viewData(r, seq, seg, crumbs) {
   const key = `${r.db}|${r.schema}|${r.table}`;
-  const g = state.grids[key] || (state.grids[key] = { limit: store.get('pageSize', 50), offset: 0, sort: null, order: 'asc', q: '', filters: [], showFilters: false });
+  const g = state.grids[key] || (state.grids[key] = { limit: store.get('pageSize', 50), offset: 0, sort: null, order: 'asc', q: '', filters: [], showFilters: false, openKey: null });
   g.selected = new Map();
+  const tbl = state.tables.find(t => t.name === r.table) || {};
+  const title = `${r.schema}.${r.table}`;
+  const kindBadge = h('span', { class: 'badge' }, KIND_NAME[tbl.kind] || 'table');
+  const queryBtn = btn('Query', () => { store.set('sql:' + r.db, `SELECT *\nFROM ${qi(r.schema)}.${qi(r.table)}\nLIMIT 100;`); go(link.sql(r.db)); }, { icon: 'terminal' });
 
-  const content = setMain({ title: r.table, crumbs, tabs, flush: true, body: loadingView() });
+  setMain({ title, crumbs, badges: kindBadge, flush: true, monoTitle: true, actions: [seg, queryBtn], body: loadingView() });
   let data;
   try {
     data = await GET(`${tblPath(r)}/rows${qs({
@@ -1642,47 +1929,73 @@ async function viewData(r, seq, tabs, crumbs) {
   const rowKey = (row) => pk.length ? JSON.stringify(pk.map(k => row[k])) : row.__ctid;
 
   // --- toolbar
-  const search = h('input', { class: 'input sm search', placeholder: 'Search in rows…', value: g.q, onkeydown: (e) => { if (e.key === 'Enter') { g.q = search.value; g.offset = 0; route(); } } });
-  const delBtn = btn('Delete', () => deleteSelected(), { class: 'sm danger', icon: 'trash', disabled: true });
-  const updateDel = () => { delBtn.disabled = g.selected.size === 0; delBtn.lastChild.textContent = g.selected.size ? `Delete ${g.selected.size}` : 'Delete'; };
+  const search = h('input', { class: 'input sm search', placeholder: 'Search rows…', value: g.q, 'aria-label': 'Search rows', onkeydown: (e) => { if (e.key === 'Enter') { g.q = search.value; g.offset = 0; route(); } } });
+  const nf = activeFilters(g).length;
   const toolbar = h('div', { class: 'toolbar' },
-    search,
-    btn(activeFilters(g).length ? `Filters (${activeFilters(g).length})` : 'Filter', () => { g.showFilters = !g.showFilters; if (g.showFilters && !g.filters.length) g.filters.push({ column: cols[0].name, op: 'eq', value: '' }); route(); }, { class: 'sm' + (activeFilters(g).length ? ' primary' : ''), icon: 'filter' }),
-    btn('', () => route(), { class: 'sm icon', icon: 'refresh', title: 'Refresh' }),
+    h('div', { class: 'searchbox' }, icon('search', 13), search),
+    btn(nf ? `Filters (${nf})` : 'Filter', () => { g.showFilters = !g.showFilters; if (g.showFilters && !g.filters.length) g.filters.push({ column: cols[0].name, op: 'eq', value: '' }); route(); }, { class: 'sm' + (nf ? ' primary' : ''), icon: 'filter' }),
+    g.sort && h('span', { class: 'chip' }, icon('chevron', 12), g.sort, h('span', { class: 'op' }, g.order.toUpperCase()), h('button', { title: 'Clear sort', onclick: () => { g.sort = null; g.offset = 0; route(); } }, icon('x', 12))),
+    btn('', () => route(), { class: 'sm ghost icon', icon: 'refresh', title: 'Refresh' }),
     h('span', { class: 'grow' }),
-    data.editable && btn('Insert row', () => rowEditor(r, data, null), { class: 'sm primary', icon: 'plus' }),
-    data.editable && delBtn,
     btn('Export CSV', () => download(`${tblPath(r)}/export`), { class: 'sm', icon: 'download' }),
-    data.editable && btn('Import CSV', () => importCsvModal(r, cols), { class: 'sm', icon: 'upload' }));
+    data.editable && btn('Import CSV', () => importCsvModal(r, cols), { class: 'sm', icon: 'upload' }),
+    data.editable && btn('Insert row', () => insertRow(), { class: 'sm primary', icon: 'plus' }));
 
-  // --- filters
+  // --- active filters as chips, or the filter editor
   let filtersEl = null;
   if (g.showFilters) {
-    const OPS = [['eq', '='], ['neq', '≠'], ['lt', '<'], ['lte', '≤'], ['gt', '>'], ['gte', '≥'], ['contains', 'contains'], ['ilike', 'ILIKE'], ['like', 'LIKE'], ['not_like', 'NOT LIKE'], ['in', 'in (a,b,c)'], ['is_null', 'is null'], ['not_null', 'is not null']];
     filtersEl = h('div', { class: 'filters' },
       g.filters.map((f, i) => {
-        const val = h('input', { class: 'input sm val mono', value: f.value ?? '', placeholder: 'value', oninput: (e) => { f.value = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { g.offset = 0; route(); } } });
-        const opSel = select(OPS, f.op, { class: 'input sm', onchange: (e) => { f.op = e.target.value; val.style.display = f.op.endsWith('null') ? 'none' : ''; } });
+        const val = h('input', { class: 'input sm val mono', value: f.value ?? '', placeholder: 'value', oninput: (e) => { f.value = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { g.offset = 0; g.showFilters = false; route(); } } });
+        const opSel = select(FILTER_OPS, f.op, { class: 'input sm', onchange: (e) => { f.op = e.target.value; val.style.display = f.op.endsWith('null') ? 'none' : ''; } });
         val.style.display = f.op.endsWith('null') ? 'none' : '';
         return h('div', { class: 'frow' },
-          select(cols.map(c => c.name), f.column, { class: 'input sm', onchange: (e) => { f.column = e.target.value; } }),
+          h('span', { class: 'faint small', style: { width: '42px' } }, i ? 'and' : 'where'),
+          select(cols.map(c => c.name), f.column, { class: 'input sm mono', onchange: (e) => { f.column = e.target.value; } }),
           opSel, val,
-          btn('', () => { g.filters.splice(i, 1); if (!g.filters.length) g.showFilters = false; g.offset = 0; route(); }, { class: 'sm ghost icon', icon: 'x' }));
+          btn('', () => { g.filters.splice(i, 1); if (!g.filters.length) g.showFilters = false; g.offset = 0; route(); }, { class: 'sm ghost icon', icon: 'x', title: 'Remove' }));
       }),
       h('div', { class: 'frow' },
-        btn('Add filter', () => { g.filters.push({ column: cols[0].name, op: 'eq', value: '' }); route(); }, { class: 'sm', icon: 'plus' }),
-        btn('Apply', () => { g.offset = 0; route(); }, { class: 'sm primary' }),
+        h('span', { style: { width: '42px' } }),
+        btn('Add condition', () => { g.filters.push({ column: cols[0].name, op: 'eq', value: '' }); route(); }, { class: 'sm', icon: 'plus' }),
+        btn('Apply', () => { g.offset = 0; g.showFilters = false; route(); }, { class: 'sm primary' }),
         g.filters.length ? btn('Clear all', () => { g.filters = []; g.showFilters = false; g.offset = 0; route(); }, { class: 'sm ghost' }) : null));
+  } else if (nf) {
+    const opLabel = Object.fromEntries(FILTER_OPS);
+    filtersEl = h('div', { class: 'chips' }, h('span', { class: 'lbl' }, 'Filters'),
+      activeFilters(g).map(f => h('span', { class: 'chip' }, f.column, h('span', { class: 'op' }, opLabel[f.op] || f.op), !f.op.endsWith('null') && h('span', { class: 'val' }, `'${f.value}'`),
+        h('button', { title: 'Remove filter', onclick: () => { g.filters.splice(g.filters.indexOf(f), 1); g.offset = 0; route(); } }, icon('x', 12)))),
+      btn('Edit', () => { g.showFilters = true; route(); }, { class: 'sm ghost', icon: 'plus' }));
   }
 
+  // --- selection bar
+  const selbar = h('div', { class: 'selbar', style: { display: 'none' } });
+  const updateSel = () => {
+    const n = g.selected.size;
+    selbar.style.display = n ? '' : 'none';
+    if (!n) return;
+    clear(selbar);
+    append(selbar, [
+      h('span', null, `${n} row${n > 1 ? 's' : ''} selected`),
+      btn('Export selection', () => exportRows([...g.selected.values()]), { class: 'sm ghost', icon: 'download' }),
+      data.editable && btn('Delete selected', () => deleteSelected(), { class: 'sm danger', icon: 'trash' }),
+      h('span', { class: 'grow' }),
+      btn('Clear selection', () => { headChk.checked = false; headChk.dispatchEvent(new Event('change')); }, { class: 'sm ghost', icon: 'x' }),
+    ]);
+  };
+
   // --- grid
+  const gridArea = h('div', { class: 'grid-area' });
+  let panel = null;
+  let openTr = null;
   const headChk = h('input', { type: 'checkbox', 'aria-label': 'Select all' });
   const tbody = h('tbody');
-  const trs = [];
+  const chks = [];
+  const frag = document.createDocumentFragment();
   data.rows.forEach((row, i) => {
-    const chk = h('input', { type: 'checkbox', onclick: (e) => e.stopPropagation() });
-    const tr = h('tr', { ondblclick: () => rowEditor(r, data, row), title: data.editable ? 'Double-click to edit' : '' },
-      data.editable ? h('td', { class: 'chk', onclick: (e) => { if (e.target !== chk) chk.click(); e.stopPropagation(); } }, chk) : null,
+    const chk = h('input', { type: 'checkbox', 'aria-label': 'Select row', onclick: (e) => e.stopPropagation() });
+    const tr = h('tr', { onclick: () => openRow(row, tr, g.offset + i + 1) },
+      h('td', { class: 'chk', onclick: (e) => { if (e.target !== chk) chk.click(); e.stopPropagation(); } }, chk),
       h('td', { class: 'rn' }, g.offset + i + 1),
       cols.map(c => {
         const v = row[c.name];
@@ -1690,56 +2003,114 @@ async function viewData(r, seq, tabs, crumbs) {
         let cls = '';
         if (c.category === 'N') cls = 'numv';
         if (c.category === 'B') cls = v === 'true' ? 'bool-t' : 'bool-f';
-        const shown = v.length > 300 ? v.slice(0, 300) + '…' : v;
-        return h('td', { class: cls, title: v.length > 40 ? v.slice(0, 2000) : null }, shown);
+        return h('td', { class: cls, title: v.length > 40 ? v.slice(0, 2000) : null }, v.length > 300 ? v.slice(0, 300) + '…' : v);
       }));
     chk.addEventListener('change', () => {
       if (chk.checked) g.selected.set(rowKey(row), row); else g.selected.delete(rowKey(row));
       tr.classList.toggle('sel', chk.checked);
       headChk.checked = g.selected.size === data.rows.length && data.rows.length > 0;
-      updateDel();
+      updateSel();
     });
-    trs.push(chk);
-    tbody.appendChild(tr);
+    chks.push(chk);
+    if (g.openKey && rowKey(row) === g.openKey) setTimeout(() => openRow(row, tr, g.offset + i + 1), 0);
+    frag.appendChild(tr);
   });
-  headChk.addEventListener('change', () => { trs.forEach(c => { if (c.checked !== headChk.checked) { c.checked = headChk.checked; c.dispatchEvent(new Event('change')); } }); });
+  tbody.appendChild(frag);
+  headChk.addEventListener('change', () => { chks.forEach(c => { if (c.checked !== headChk.checked) { c.checked = headChk.checked; c.dispatchEvent(new Event('change')); } }); });
 
   const thead = h('thead', null, h('tr', null,
-    data.editable ? h('th', { class: 'chk' }, headChk) : null,
-    h('th', null, h('div', { class: 'h' }, h('span', { class: 'n' }, '#'), h('span', { class: 't' }, ' '))),
+    h('th', { class: 'chk' }, headChk),
+    h('th', null, h('div', { class: 'h', style: { cursor: 'default' } }, h('span', { class: 'n' }, '#'), h('span', { class: 't' }, ' '))),
     cols.map(c => h('th', null, h('div', {
-      class: 'h', title: 'Click to sort',
+      class: 'h', title: 'Sort by ' + c.name,
       onclick: () => {
         if (g.sort !== c.name) { g.sort = c.name; g.order = 'asc'; } else if (g.order === 'asc') g.order = 'desc'; else { g.sort = null; }
         g.offset = 0; route();
       },
     },
-    h('span', { class: 'n' }, c.primary_key && h('span', { class: 'pk', title: 'Primary key' }, '🔑'), c.name, g.sort === c.name && h('span', { class: 'arrow' }, g.order === 'asc' ? '↑' : '↓')),
+    h('span', { class: 'n' }, c.name, c.primary_key && h('span', { class: 'pk', title: 'Primary key' }, 'PK'), g.sort === c.name && h('span', { class: 'arrow' }, g.order === 'asc' ? '↑' : '↓')),
     h('span', { class: 't' }, c.type))))));
-  const gridWrap = h('div', { class: 'grid-wrap' },
-    data.rows.length ? h('table', { class: 'grid' }, thead, tbody) :
-      h('div', { class: 'loading' }, g.q || activeFilters(g).length ? 'No rows match.' : 'This table is empty.', data.editable && btn('Insert row', () => rowEditor(r, data, null), { class: 'sm', icon: 'plus' })));
+  gridArea.appendChild(h('div', { class: 'grid-wrap' },
+    data.rows.length ? h('table', { class: 'grid clickable' }, thead, tbody) :
+      h('div', { class: 'loading', style: { flexDirection: 'column' } }, g.q || nf ? 'No rows match.' : 'This table is empty.', data.editable && btn('Insert row', () => insertRow(), { class: 'sm', icon: 'plus' }))));
 
   // --- pager
   const from = data.rows.length ? g.offset + 1 : 0;
   const to = g.offset + data.rows.length;
+  const pages = Math.max(1, Math.ceil(data.total / g.limit));
+  const page = Math.floor(g.offset / g.limit) + 1;
   const pageSize = select(['25', '50', '100', '250', '500', '1000'], String(g.limit), {
-    class: 'input sm', onchange: (e) => { g.limit = Number(e.target.value); store.set('pageSize', g.limit); g.offset = 0; route(); },
+    class: 'input sm', 'aria-label': 'Rows per page', onchange: (e) => { g.limit = Number(e.target.value); store.set('pageSize', g.limit); g.offset = 0; route(); },
   });
   const pager = h('div', { class: 'pager' },
-    h('span', null, `Rows ${fmtNum(from)}–${fmtNum(to)} of ${data.total_exact ? '' : '~'}${fmtNum(data.total)}`),
-    h('span', { class: 'faint' }, `${data.duration_ms} ms`),
+    h('span', null, 'Rows ', h('strong', null, `${fmtNum(from)}–${fmtNum(to)}`), ` of ${data.total_exact ? '' : '~'}${fmtNum(data.total)}`),
     !data.editable && h('span', { class: 'badge' }, 'read-only'),
     data.editable && !pk.length && h('span', { class: 'badge warn', title: 'Rows are identified by their physical location (ctid). Add a primary key for reliable editing.' }, 'no primary key'),
     h('span', { class: 'grow' }),
-    h('span', null, 'Page size'), pageSize,
-    btn('‹ Prev', () => { g.offset = Math.max(0, g.offset - g.limit); route(); }, { class: 'sm', disabled: g.offset === 0 }),
-    btn('Next ›', () => { g.offset += g.limit; route(); }, { class: 'sm', disabled: to >= data.total || data.rows.length < g.limit }));
+    h('span', null, 'Per page'), pageSize,
+    btn('', () => { g.offset = Math.max(0, g.offset - g.limit); route(); }, { class: 'sm icon', icon: 'chevron', title: 'Previous page', disabled: g.offset === 0 }),
+    h('span', { class: 'nowrap' }, `Page ${fmtNum(page)} of ${data.total_exact ? '' : '~'}${fmtNum(pages)}`),
+    btn('', () => { g.offset += g.limit; route(); }, { class: 'sm icon', icon: 'chevron', title: 'Next page', disabled: to >= data.total || data.rows.length < g.limit }),
+    h('span', { class: 'vsep' }),
+    h('span', { class: 'ok' }, '● '), h('span', null, `${data.duration_ms} ms`));
+  pager.querySelector('[title="Previous page"] svg').style.transform = 'rotate(180deg)';
 
-  const actions = [btn('Structure', () => go(link.table(r.db, r.schema, r.table, 'structure')), { icon: 'table' }),
-    btn('Query', () => { store.set('sql:' + r.db, `SELECT *\nFROM ${qi(r.schema)}.${qi(r.table)}\nLIMIT 100;`); go(link.sql(r.db)); }, { icon: 'sql' })];
-  const c2 = setMain({ title: r.table, crumbs, tabs, flush: true, actions, body: [toolbar, filtersEl, gridWrap, pager] });
-  void content; void c2;
+  const sub = `${data.total_exact ? '' : '~'}${fmtNum(data.total)} rows · ${cols.length} columns` + (tbl.size_bytes != null ? ` · ${fmtBytes(tbl.size_bytes)}` : '');
+  setMain({ title, crumbs, badges: kindBadge, sub, flush: true, monoTitle: true, actions: [seg, queryBtn], body: [toolbar, filtersEl, selbar, gridArea, pager] });
+
+  function closeRow() {
+    if (panel) panel.remove();
+    if (openTr) openTr.classList.remove('open');
+    panel = null; openTr = null; g.openKey = null;
+  }
+  function openRow(row, tr, n) {
+    closeRow();
+    g.openKey = rowKey(row);
+    openTr = tr; tr.classList.add('open');
+    const form = rowForm(data, row);
+    const ident = pk.length ? { key: Object.fromEntries(pk.map(k => [k, row[k]])) } : { ctid: row.__ctid };
+    const save = btn('Save changes', async () => {
+      const values = form.collect();
+      if (!Object.keys(values).length) { toast('No changes'); return; }
+      save.disabled = true;
+      try { await PATCH(`${tblPath(r)}/rows`, Object.assign({}, ident, { values })); toast('Row saved'); route(); } catch (e) { toastErr(e, 'Save failed'); } finally { save.disabled = false; }
+    }, { class: 'primary' });
+    panel = h('aside', { class: 'rowpanel', 'aria-label': 'Row details' },
+      h('div', { class: 'rowpanel-head' }, icon('file'), h('h2', null, `Row ${fmtNum(n)}`),
+        btn('JSON', () => copyText(JSON.stringify(Object.fromEntries(Object.entries(row).filter(([k]) => k !== '__ctid')), null, 2)), { class: 'sm', icon: 'copy', title: 'Copy row as JSON' }),
+        btn('', closeRow, { class: 'sm ghost icon', icon: 'x', title: 'Close' })),
+      h('div', { class: 'rowpanel-body' }, form.body),
+      data.editable && h('div', { class: 'rowpanel-foot' },
+        btn('', async () => {
+          if (!await confirmDanger({ title: 'Delete this row?', message: 'This cannot be undone.' })) return;
+          try { await DEL(`${tblPath(r)}/rows`, pk.length ? { keys: [ident.key] } : { ctids: [row.__ctid] }); toast('Row deleted'); closeRow(); route(); } catch (e) { toastErr(e, 'Delete failed'); }
+        }, { class: 'danger icon', icon: 'trash', title: 'Delete row' }),
+        btn('Duplicate', () => {
+          const copy = Object.assign({}, row);
+          for (const c of data.columns) if (c.primary_key && (c.identity || c.default)) delete copy[c.name];
+          rowEditorPrefilled(r, data, copy);
+        }, { icon: 'copy' }),
+        h('span', { class: 'grow' }),
+        save));
+    gridArea.appendChild(panel);
+  }
+
+  async function insertRow() {
+    const form = rowForm(data, null);
+    const res = await modal({
+      title: `Insert into ${r.table}`, drawer: true, body: form.body,
+      actions: [{ label: 'Cancel' }, { label: 'Insert row', primary: true, onClick: () => POST(`${tblPath(r)}/rows`, { values: form.collect() }) }],
+    });
+    if (res) { toast('Row inserted'); route(); }
+  }
+
+  function exportRows(rows) {
+    const q = (s) => /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    const lines = [cols.map(c => q(c.name)).join(',')].concat(rows.map(row => cols.map(c => row[c.name] == null ? '' : q(String(row[c.name]))).join(',')));
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    const a = h('a', { href: url, download: `${r.table}-selection.csv` }); document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   async function deleteSelected() {
     const n = g.selected.size;
@@ -1756,11 +2127,9 @@ function activeFilters(g) {
 }
 function qi(name) { return /^[a-z_][a-z0-9_]*$/.test(name) ? name : '"' + name.replace(/"/g, '""') + '"'; }
 
-// ---------- row editor (insert + update)
-async function rowEditor(r, data, row) {
-  if (!data.editable) return;
+// ---------- row form (used by the row panel and the insert drawer)
+function rowForm(data, row) {
   const isNew = !row;
-  const pk = data.primary_key;
   const fields = [];
   const body = h('div', null, data.columns.map(c => {
     const generated = c.generated === 's' || c.identity === 'a';
@@ -1768,25 +2137,26 @@ async function rowEditor(r, data, row) {
     const cur = row ? row[c.name] : null;
     let input;
     if (c.category === 'B') {
-      input = select([['true', 'true'], ['false', 'false']], cur ?? 'true', { class: 'input sm' });
+      input = select([['true', 'true'], ['false', 'false']], cur ?? 'true', { class: 'input sm mono' });
     } else {
       input = h('textarea', { class: 'input', rows: 1, spellcheck: 'false', value: cur ?? '' });
       const grow = () => { input.style.height = 'auto'; input.style.height = Math.min(260, Math.max(32, input.scrollHeight + 2)) + 'px'; };
       input.addEventListener('input', grow);
       setTimeout(grow, 0);
     }
-    const nullBox = c.nullable ? h('input', { type: 'checkbox', checked: !isNew && cur == null }) : null;
+    if (!data.editable) input.disabled = true;
+    const nullBox = c.nullable && data.editable ? h('input', { type: 'checkbox', checked: !isNew && cur == null }) : null;
     const defBox = isNew && hasDefault ? h('input', { type: 'checkbox', checked: true }) : null;
     const wrap = h('div', { class: 'edit-field' },
-      h('div', { class: 'fname' }, c.primary_key ? '🔑 ' : '', c.name, h('small', null, c.type + (c.nullable ? '' : ' · not null'))),
+      h('div', { class: 'fhead' }, h('span', null, c.name), c.primary_key && h('span', { class: 'pk' }, 'PK'), h('span', { class: 'ty' }, c.type + (c.nullable ? '' : ' · not null'))),
       input,
-      h('div', { class: 'opts' },
-        defBox && h('label', { class: 'check' }, defBox, 'default'),
+      (defBox || nullBox) && h('div', { class: 'opts' },
+        defBox && h('label', { class: 'check' }, defBox, 'use default'),
         nullBox && h('label', { class: 'check' }, nullBox, 'NULL')));
     const sync = () => {
-      const off = (nullBox && nullBox.checked) || (defBox && defBox.checked) || (!isNew && generated);
+      const off = (nullBox && nullBox.checked) || (defBox && defBox.checked) || (!isNew && generated) || !data.editable;
       input.disabled = !!off;
-      wrap.classList.toggle('is-null', !!off);
+      wrap.classList.toggle('is-null', !!off && data.editable);
     };
     nullBox && nullBox.addEventListener('change', () => { if (nullBox.checked && defBox) defBox.checked = false; sync(); });
     defBox && defBox.addEventListener('change', () => { if (defBox.checked && nullBox) nullBox.checked = false; sync(); });
@@ -1796,7 +2166,6 @@ async function rowEditor(r, data, row) {
     fields.push({ c, input, nullBox, defBox, generated, orig: cur });
     return wrap;
   }));
-
   const collect = () => {
     const values = {};
     for (const f of fields) {
@@ -1808,36 +2177,9 @@ async function rowEditor(r, data, row) {
     }
     return values;
   };
-  const ident = () => pk.length ? { key: Object.fromEntries(pk.map(k => [k, row[k]])) } : { ctid: row.__ctid };
-
-  const actions = [];
-  if (!isNew) {
-    actions.push({
-      label: 'Delete row', left: true, onClick: async () => {
-        if (!await confirmDanger({ title: 'Delete this row?', message: 'This cannot be undone.' })) return false;
-        await DEL(`${tblPath(r)}/rows`, pk.length ? { keys: [ident().key] } : { ctids: [row.__ctid] });
-        return 'deleted';
-      },
-    });
-    actions.push({ label: 'Duplicate', onClick: () => 'duplicate' });
-  }
-  actions.push({ label: 'Cancel' });
-  actions.push({
-    label: isNew ? 'Insert' : 'Save', primary: true, onClick: async () => {
-      const values = collect();
-      if (isNew) return POST(`${tblPath(r)}/rows`, { values });
-      if (!Object.keys(values).length) { toast('No changes'); return null; }
-      return PATCH(`${tblPath(r)}/rows`, Object.assign(ident(), { values }));
-    },
-  });
-  const res = await modal({ title: isNew ? `Insert into ${r.table}` : `Edit row in ${r.table}`, size: 'mid', body, actions });
-  if (res === 'duplicate') {
-    const copy = Object.assign({}, row);
-    for (const c of data.columns) if (c.primary_key && (c.identity || c.default)) delete copy[c.name];
-    return rowEditorPrefilled(r, data, copy);
-  }
-  if (res === 'deleted') { toast('Row deleted'); route(); } else if (res) { toast(isNew ? 'Row inserted' : 'Row saved'); route(); }
+  return { body, collect };
 }
+
 async function rowEditorPrefilled(r, data, values) {
   // Insert dialog with values copied from another row
   const res = await modal({
@@ -1882,8 +2224,8 @@ async function importCsvModal(r, cols) {
 }
 
 // ---------- structure
-async function viewStructure(r, seq, tabs, crumbs) {
-  setMain({ title: r.table, crumbs, tabs, body: loadingView() });
+async function viewStructure(r, seq, seg, crumbs) {
+  setMain({ title: r.table, crumbs, actions: [seg], body: loadingView() });
   const t = await GET(tblPath(r));
   if (seq !== renderSeq) return;
   const isTable = t.kind === 'r' || t.kind === 'p';
@@ -1892,7 +2234,7 @@ async function viewStructure(r, seq, tabs, crumbs) {
   const reload = () => route();
 
   const colSection = h('div', { class: 'section' },
-    h('div', { class: 'section-head' }, h('h3', null, 'Columns'), h('span', { class: 'muted' }, t.columns.length),
+    h('div', { class: 'section-head' }, h('h3', null, 'Columns'), h('span', { class: 'count' }, t.columns.length),
       h('div', { class: 'actions' }, isTable && btn('Add column', () => columnModal(r, null, reload), { class: 'sm primary', icon: 'plus' }))),
     h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'list' },
       h('thead', null, h('tr', null, ['#', 'Name', 'Type', 'Nullable', 'Default', 'Comment', ''].map(x => h('th', null, x)))),
@@ -1912,7 +2254,7 @@ async function viewStructure(r, seq, tabs, crumbs) {
           }, { class: 'sm danger' })])))))));
 
   const idxSection = t.kind !== 'v' && h('div', { class: 'section' },
-    h('div', { class: 'section-head' }, h('h3', null, 'Indexes'), h('span', { class: 'muted' }, t.indexes.length),
+    h('div', { class: 'section-head' }, h('h3', null, 'Indexes'), h('span', { class: 'count' }, t.indexes.length),
       h('div', { class: 'actions' }, btn('Add index', () => indexModal(r, t, reload), { class: 'sm', icon: 'plus' }))),
     t.indexes.length ? h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'list' }, h('tbody', null, t.indexes.map(ix => h('tr', null,
       h('td', null, h('strong', null, ix.name), ' ', ix.is_primary ? h('span', { class: 'badge warn' }, 'primary') : ix.is_unique && h('span', { class: 'badge accent' }, 'unique')),
@@ -1925,7 +2267,7 @@ async function viewStructure(r, seq, tabs, crumbs) {
 
   const TYPE = { p: ['primary key', 'warn'], u: ['unique', 'accent'], c: ['check', ''], f: ['foreign key', 'ok'], x: ['exclusion', ''], t: ['trigger', ''] };
   const conSection = isTable && h('div', { class: 'section' },
-    h('div', { class: 'section-head' }, h('h3', null, 'Constraints'), h('span', { class: 'muted' }, t.constraints.length),
+    h('div', { class: 'section-head' }, h('h3', null, 'Constraints'), h('span', { class: 'count' }, t.constraints.length),
       h('div', { class: 'actions' }, btn('Add constraint', () => constraintModal(r, t, reload), { class: 'sm', icon: 'plus' }))),
     t.constraints.length ? h('table', { class: 'list' }, h('tbody', null, t.constraints.map(k => h('tr', null,
       h('td', null, h('strong', null, k.name)),
@@ -1964,15 +2306,16 @@ async function viewStructure(r, seq, tabs, crumbs) {
       }, { class: 'danger solid' })));
 
   setMain({
-    title: r.table, crumbs, tabs,
-    actions: [btn('Data', () => go(link.table(r.db, r.schema, r.table, 'data')), { icon: 'table' })],
+    title: r.table, crumbs,
+    badges: h('span', { class: 'badge' }, KIND_NAME[t.kind] || t.kind),
+    sub: (st.comment ? st.comment + ' · ' : '') + `${r.schema}.${r.table} · owner ${st.owner}`,
+    actions: [seg],
     body: [
       h('div', { class: 'cards' },
         h('div', { class: 'card' }, h('div', { class: 'k' }, 'Rows (estimate)'), h('div', { class: 'v' }, t.kind === 'v' ? '—' : fmtNum(st.row_estimate))),
         h('div', { class: 'card' }, h('div', { class: 'k' }, 'Total size'), h('div', { class: 'v' }, fmtBytes(st.total_bytes)), h('div', { class: 's' }, `data ${fmtBytes(st.table_bytes)} · indexes ${fmtBytes(st.index_bytes)}`)),
         h('div', { class: 'card' }, h('div', { class: 'k' }, 'Owner'), h('div', { class: 'v', style: { fontSize: '17px' } }, st.owner)),
         h('div', { class: 'card' }, h('div', { class: 'k' }, 'Last analyzed'), h('div', { class: 'v', style: { fontSize: '17px' } }, (st.last_analyze || st.last_autoanalyze) ? since(st.last_analyze || st.last_autoanalyze) + ' ago' : 'never'))),
-      st.comment && h('p', { class: 'muted', style: { marginTop: 0 } }, st.comment),
       colSection, idxSection, conSection, tableActions,
     ],
   });
@@ -1995,6 +2338,7 @@ async function columnModal(r, c, done) {
   }
   const res = await modal({
     title: isNew ? `Add column to ${r.table}` : `Edit column ${c.name}`,
+    drawer: true,
     body: [h('div', { class: 'grid2' }, field('Name', name), field('Type', type)), isNew ? null : usingField,
       field('Default', def, c && c.identity ? 'identity column' : ''), h('div', { class: 'row' }, nullable, isNew && unique), field('Comment', comment),
       isNew && h('p', { class: 'faint', style: { margin: 0, fontSize: '12.5px' } }, 'Adding a NOT NULL column to a table with rows needs a default.')],
@@ -2033,6 +2377,7 @@ async function indexModal(r, t, done) {
   const where = h('input', { class: 'input mono', placeholder: 'optional partial-index condition, e.g. deleted_at IS NULL' });
   const res = await modal({
     title: `New index on ${r.table}`,
+    drawer: true,
     body: [field('Columns', cols, 'index column order follows the table'), h('div', { class: 'grid2' }, field('Name', name), field('Method', method)),
       h('div', { class: 'row' }, unique, conc), field('Where', where), h('p', { class: 'faint', style: { margin: 0, fontSize: '12.5px' } }, 'Tip: use gin for jsonb, arrays and full-text search columns.')],
     actions: [{ label: 'Cancel' }, {
@@ -2073,7 +2418,7 @@ async function constraintModal(r, t, done) {
   };
   type.addEventListener('change', sync); sync();
   const res = await modal({
-    title: `New constraint on ${r.table}`, size: 'mid',
+    title: `New constraint on ${r.table}`, drawer: true,
     body: [h('div', { class: 'grid2' }, field('Type', type), field('Name', name)), colsF, exprF, fkF],
     actions: [{ label: 'Cancel' }, {
       label: 'Add constraint', primary: true, onClick: () => POST(`${tblPath(r)}/constraints`, {
@@ -2103,13 +2448,14 @@ async function renameTableModal(r, t) {
 }
 
 // ---------- DDL
-async function viewDdl(r, seq, tabs, crumbs) {
-  setMain({ title: r.table, crumbs, tabs, body: loadingView() });
+async function viewDdl(r, seq, seg, crumbs) {
+  setMain({ title: r.table, crumbs, actions: [seg], body: loadingView() });
   const t = await GET(tblPath(r));
   if (seq !== renderSeq) return;
   setMain({
-    title: r.table, crumbs, tabs,
-    actions: [btn('Copy', () => copyText(t.ddl), { icon: 'copy' }), btn('Open in SQL console', () => { store.set('sql:' + r.db, t.ddl); go(link.sql(r.db)); }, { icon: 'sql' })],
+    title: r.table, crumbs,
+    sub: 'CREATE statement reconstructed from the catalog',
+    actions: [seg, btn('Copy', () => copyText(t.ddl), { icon: 'copy' }), btn('Open in SQL console', () => { store.set('sql:' + r.db, t.ddl); go(link.sql(r.db)); }, { icon: 'terminal' })],
     body: [h('pre', { class: 'code' }, t.ddl), h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Reconstructed from the catalog. For an exact, restorable copy use Backup (pg_dump).')],
   });
 }
@@ -2135,9 +2481,9 @@ async function viewSql(r) {
     if (f.size > 5 * 1024 * 1024) { toast('File is larger than 5 MB — use psql for big restores', 'error'); return; }
     editor.value = await f.text(); store.set('sql:' + db, editor.value); toast(`Loaded ${f.name}`);
   });
-  const results = h('div', { style: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } },
-    h('div', { class: 'loading' }, h('span', { class: 'faint' }, 'Results appear here.')));
-  const runBtn = btn('Run', () => run(), { class: 'primary', icon: 'play' });
+  const results = h('div', { class: 'results' },
+    h('div', { class: 'loading' }, h('span', { class: 'faint' }, 'Run a query to see results here. ', h('kbd', null, IS_MAC ? '⌘' : 'Ctrl'), ' ', h('kbd', null, '↵'), ' runs the selection or everything.')));
+  const runBtn = btn('Run', () => run(), { class: 'sm primary', icon: 'play', title: (IS_MAC ? '⌘' : 'Ctrl') + ' + Enter' });
 
   async function run(prefix = '') {
     const sel = editor.value.substring(editor.selectionStart, editor.selectionEnd);
@@ -2215,18 +2561,20 @@ async function viewSql(r) {
     crumbs: [[db, link.db(db)]],
     flush: true,
     actions: [
-      select(state.dbs.filter(d => d.can_connect).map(d => d.name), db, { class: 'input sm', style: { width: 'auto' }, onchange: (e) => go(link.sql(e.target.value)), 'aria-label': 'Database' }),
+      h('span', { class: 'faint small' }, 'Database'),
+      select(state.dbs.filter(d => d.can_connect).map(d => d.name), db, { class: 'input sm mono', style: { width: 'auto' }, onchange: (e) => go(link.sql(e.target.value)), 'aria-label': 'Database' }),
     ],
     body: h('div', { class: 'sql-layout' },
       h('div', { class: 'editor-wrap' }, editor,
-        h('div', { class: 'row', style: { gap: '8px' } },
+        h('div', { class: 'editor-bar' },
           runBtn,
-          btn('Explain', () => run('EXPLAIN (ANALYZE, BUFFERS) '), { class: '', title: 'Runs the query with EXPLAIN ANALYZE — it really executes!' }),
+          btn('Explain analyze', () => run('EXPLAIN (ANALYZE, BUFFERS) '), { class: 'sm', title: 'Runs the query with EXPLAIN ANALYZE — it really executes!' }),
+          h('span', { class: 'vsep' }),
           limit, snippets,
           h('span', { class: 'grow' }),
           btn('History', showHistory, { class: 'sm ghost', icon: 'history' }),
           btn('Open .sql', () => fileIn.click(), { class: 'sm ghost', icon: 'file' }), fileIn,
-          btn('Clear', () => { editor.value = ''; store.set('sql:' + db, ''); editor.focus(); }, { class: 'sm ghost' }))),
+          btn('Clear', () => { editor.value = ''; store.set('sql:' + db, ''); editor.focus(); }, { class: 'sm ghost', icon: 'x' }))),
       results),
   });
   editor.focus();
@@ -2237,11 +2585,13 @@ async function boot() {
   try {
     const me = await api('GET', '/api/auth/me');
     state.user = me.user;
+    state.me = me;
   } catch (e) {
-    if (e.status !== 401) renderLogin(e.message);
+    renderLogin(e.status === 401 ? undefined : e.message);
     return;
   }
   renderShell();
+  GET('/api/connection-info').then((c) => { if (c.server_version) { state.serverVersion = c.server_version; renderSidebar(); } }).catch(() => {});
   try {
     await loadDatabases();
     await loadSchemaAndTables();

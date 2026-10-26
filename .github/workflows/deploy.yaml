@@ -28,10 +28,10 @@ jobs:
           set +e +o pipefail
           START=$(date +%s)
 
-          ssh root@${{ secrets.VPS_IP }} bash 2>&1 <<'EOF' | tee /tmp/deploy.log
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} bash 2>&1 <<'EOF' | tee /tmp/deploy.log
           set -uo pipefail
 
-          APP_DIR=/root/Projects/central-postgress
+          APP_DIR=/home/ramiz-prod/Projects/central-postgress
           CONTAINER=central-postgres-application
           SERVICE=central-postgres-application
           DEPLOY_BRANCH=vps
