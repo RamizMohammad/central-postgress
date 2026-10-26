@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import urllib.request
@@ -11,7 +12,8 @@ from pathlib import Path
 import asyncpg
 from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth
@@ -119,6 +121,11 @@ async def conn_error(request: Request, exc: OSError):
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     resp = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        # index.html links assets as /static/x?v=<content hash>, so a deploy changes the URL
+        resp.headers["Cache-Control"] = (
+            "public, max-age=31536000, immutable" if request.query_params.get("v") else "no-cache"
+        )
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("X-Frame-Options", "DENY")
     resp.headers.setdefault("Referrer-Policy", "same-origin")
@@ -130,6 +137,29 @@ async def security_headers(request: Request, call_next):
         )
     return resp
 
+
+class SelectiveGZip:
+    """gzip the panel's HTML/JS/CSS and JSON, but never file downloads or uploads:
+    backups and dumps are already compressed, can be many GB, and must keep streaming."""
+
+    _SKIP_SUFFIX = ("/dump", "/export", "/upload")
+
+    def __init__(self, app):
+        self.app = app
+        self.gzip = GZipMiddleware(app, minimum_size=1024, compresslevel=6)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            path = scope["path"]
+            download = path.endswith(self._SKIP_SUFFIX) or (
+                path.startswith("/api/backup/files/") and not path.endswith("/inspect")
+            )
+            if not download:
+                return await self.gzip(scope, receive, send)
+        return await self.app(scope, receive, send)
+
+
+app.add_middleware(SelectiveGZip)
 
 app.include_router(auth.router)
 app.include_router(server.router)
@@ -162,6 +192,18 @@ async def api_404(rest: str):
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
+def _asset_version() -> str:
+    h = hashlib.sha256()
+    for f in sorted(STATIC.rglob("*")):
+        if f.is_file() and f.name != "index.html":
+            h.update(f.name.encode())
+            h.update(f.read_bytes())
+    return h.hexdigest()[:12]
+
+
+_INDEX = (STATIC / "index.html").read_text().replace("__V__", _asset_version())
+
+
 @app.get("/{path:path}", include_in_schema=False)
 async def panel(path: str):
-    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(_INDEX, headers={"Cache-Control": "no-cache"})

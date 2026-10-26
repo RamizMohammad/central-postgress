@@ -43,9 +43,27 @@ async def overview():
         dbs = await conn.fetch(
             """
             SELECT d.datname AS name,
+                   pg_get_userbyid(d.datdba) AS owner,
                    CASE WHEN has_database_privilege(d.datname, 'CONNECT')
-                        THEN pg_database_size(d.datname) END AS size_bytes
-            FROM pg_database d WHERE NOT d.datistemplate ORDER BY 1
+                        THEN pg_database_size(d.datname) END AS size_bytes,
+                   coalesce(s.numbackends, 0) AS connections
+            FROM pg_database d
+            LEFT JOIN pg_stat_database s ON s.datid = d.oid
+            WHERE NOT d.datistemplate ORDER BY 1
+            """
+        )
+        stats = await conn.fetchrow(
+            """
+            SELECT round(100.0 * sum(blks_hit) / nullif(sum(blks_hit) + sum(blks_read), 0), 2)::float8 AS cache_hit_pct,
+                   sum(xact_commit)::bigint AS commits,
+                   sum(xact_rollback)::bigint AS rollbacks,
+                   sum(deadlocks)::bigint AS deadlocks,
+                   sum(temp_bytes)::bigint AS temp_bytes,
+                   current_setting('shared_buffers') AS shared_buffers,
+                   (SELECT count(*) FROM pg_stat_activity WHERE state = 'active') AS active,
+                   (SELECT count(*) FROM pg_stat_activity WHERE state LIKE 'idle in%') AS idle_in_tx,
+                   (SELECT count(*) FROM pg_stat_activity WHERE state = 'idle') AS idle
+            FROM pg_stat_database
             """
         )
         activity = await conn.fetch(
@@ -59,10 +77,29 @@ async def overview():
         )
     return {
         "server": {k: to_json_value(v) for k, v in dict(info).items()},
+        "stats": {k: to_json_value(v) for k, v in dict(stats).items()},
         "databases": _rows(dbs),
         "total_size_bytes": sum(r["size_bytes"] or 0 for r in dbs),
         "activity": _rows(activity),
         "panel_pools": pools.open_databases(),
+    }
+
+
+@router.get("/connection-info")
+async def connection_info():
+    """Non-secret connection facts for the panel's Connection guide."""
+    parsed = urlparse(settings.database_url)
+    pool = await pools.get()
+    async with pool.acquire() as conn:
+        version = await conn.fetchval("SHOW server_version")
+    return {
+        "server_version": (version or "").split(" ")[0],
+        "host": parsed.hostname,
+        "port": parsed.port or 5432,
+        "user": parsed.username,
+        "database": settings.default_database,
+        "public_host": settings.public_db_host,
+        "public_port": settings.public_db_port,
     }
 
 

@@ -90,19 +90,44 @@ server {
 
 Put it behind HTTPS — the panel has full control of your database.
 
-## 3. Using the panel
+## 3. Signing in (password and/or Google)
 
-- **Overview** — version, uptime, connection usage, database sizes, live connections (with *Kill*).
+The login page offers whatever is configured in `.env`:
+
+- **Password**: `ADMIN_USERNAME` / `ADMIN_PASSWORD`. Set `PASSWORD_LOGIN=false` to turn it off once Google works.
+- **Google**: only the addresses in `GOOGLE_ALLOWED_EMAILS` get in. Entries are exact emails, or `@yourdomain.com` for a whole Google Workspace domain.
+
+Set up Google once:
+
+1. Google Cloud console → **APIs & Services → OAuth consent screen**: External, app name `central-postgres`, add your email as a test user (or publish the app).
+2. **Credentials → Create credentials → OAuth client ID** → *Web application*.
+3. **Authorized redirect URI**: `https://postgres.mohammadramiz.in/api/auth/google/callback`
+4. Put the values in the server's `.env` and redeploy:
+
+```env
+GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-...
+GOOGLE_ALLOWED_EMAILS=ramizanas6@gmail.com
+```
+
+How it works: server-side OAuth code flow (no Google scripts in the browser). The code is exchanged with Google directly, the email must be verified, and it's checked against the allowlist on **every request**, so removing an address and restarting ends that person's sessions. Refused attempts are logged with the email and IP.
+
+## 4. Using the panel
+
+Search with **⌘K / Ctrl K** to jump to any table, database or page. The theme button in the top bar switches between system, light and dark.
+
+- **Overview** — status, version, uptime, connection usage, cache hit ratio, transactions, health checks, largest databases, live connections (with *Terminate*).
 - **Databases** — create (optionally with its own owner user + generated password + connection URL), rename, change owner, comment, back up (`.sql` or `.dump`), drop (type-to-confirm; optionally drop the owner role too).
 - **Database page** — tables in the selected schema, schemas (create/rename/drop), extensions (install `pgcrypto`, `uuid-ossp`, `vector`, …).
 - **New table** — column builder with PK / NOT NULL / UNIQUE / identity / default and a *Preview SQL* button.
-- **Table → Data** — paginated grid, click a header to sort, full-row search, filter builder (`=`, `≠`, `<`, `>`, contains, LIKE, in, is null…), double-click a row to edit, duplicate or delete it, bulk delete, CSV export/import.
+- **Table → Data** — paginated grid, click a header to sort, full-row search, filter builder (`=`, `≠`, `<`, `>`, contains, LIKE, in, is null…) shown as removable chips, click a row to open it in the side panel (edit, copy as JSON, duplicate, delete), bulk select with export/delete, CSV export/import.
 - **Table → Structure** — add/edit/drop columns (type changes with optional `USING`), indexes (btree/gin/gist/brin/hash, unique, partial, concurrent), constraints (FK with ON DELETE/UPDATE, unique, check, PK), rename/move schema, comment, VACUUM ANALYZE, truncate, drop.
-- **Table → SQL definition** — reconstructed `CREATE TABLE` + indexes.
+- **Table → Definition** — reconstructed `CREATE TABLE` + indexes.
 - **SQL console** — Ctrl/⌘+Enter runs the selection or everything; multi-statement scripts; EXPLAIN ANALYZE; result CSV export; history; snippets; load a `.sql` file (≤5 MB).
-- **Roles & access** — create roles, reset passwords, toggle LOGIN/CREATEDB/CREATEROLE, connection limits, and **Grant access**: read / write / full / revoke on every table in a schema, including tables created later.
+- **Connection guide** — copyable host/port/database, and step-by-step setups for Docker-network apps, the HTTP data API, DBeaver over SSH and Tailscale.
+- **Roles & permissions** — create roles, reset passwords, toggle LOGIN/CREATEDB/CREATEROLE, connection limits, and **Grant access**: read / write / full / revoke on every table in a schema, including tables created later.
 
-## 4. Backup & restore (moving to a new server)
+## 5. Backup & restore (moving to a new server)
 
 **Backup & restore** in the panel makes a *full server backup*: one `.tar` file containing:
 
@@ -134,7 +159,7 @@ Notes:
 - **Versions**: restore into the same or a newer PostgreSQL major version. Set the `PG_MAJOR` build arg to at least the server's version.
 - A full backup contains **all your data and password hashes**. Treat the file like a secret.
 
-## 5. Connecting from outside the server
+## 6. Connecting from outside the server
 
 There are three ways in. Pick per client:
 
@@ -245,7 +270,7 @@ psql postgresql://saathi:PASSWORD@localhost:15432/saathi
 
 Docker-published ports **bypass ufw**, so filtering has to go in the `DOCKER-USER` iptables chain, not ufw.
 
-## 6. Admin API (full control)
+## 7. Admin API (full control)
 
 Admin keys from `API_KEYS` in `.env` can do everything the panel can (create databases, roles, run any SQL). Use them for your own scripts and automation, never in apps. Send `X-API-Key: <one of API_KEYS>` (or `Authorization: Bearer <key>`). Full list at `/api/docs` (click **Authorize**).
 
@@ -285,7 +310,7 @@ For heavy app traffic, connect your services **directly** to Postgres (container
 
 Row values in list responses are returned as text (exactly as Postgres prints them) so nothing is lost for numeric, json, arrays, timestamps, etc. When writing, send strings, numbers, booleans, JSON objects or arrays and Postgres casts them to the column's type.
 
-## 7. Security notes
+## 8. Security notes
 
 - App keys (`cpk_…`) are scoped. Each runs as its own restricted Postgres role in one database. Admin keys (`API_KEYS`) and the panel login give **full control** of the database, including the SQL console. Use a long `ADMIN_PASSWORD`, keep `API_KEYS` secret, and serve over HTTPS.
 - Login is rate-limited (10 failures / 10 min / IP). Sessions are signed, `HttpOnly`, `SameSite=Lax` cookies; cookie-authenticated writes also require a custom header (CSRF guard).
@@ -293,7 +318,7 @@ Row values in list responses are returned as text (exactly as Postgres prints th
 - `postgres`, `template0/1`, the database in `DATABASE_URL` and anything in `PROTECTED_DATABASES` can't be dropped or renamed from the panel.
 - The panel connects as the user in `DATABASE_URL`. On Render that user is not a superuser — the Overview page shows which rights it has (createdb / createrole). Actions it lacks will show Postgres's permission error.
 
-## 8. Render specifics
+## 9. Render specifics
 
 - Render plans cap connections. The panel opens a small pool (`POOL_MAX`, default 5) per database you browse, and idle connections close after 2 minutes.
 - Use the **internal** URL when the panel runs on Render (same region), the **external** URL otherwise; SSL is set automatically (`DB_SSL=auto`).
