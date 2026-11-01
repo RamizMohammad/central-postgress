@@ -323,6 +323,10 @@ function parseRoute() {
   if (parts[0] === 'keys') return { page: 'keys' };
   if (parts[0] === 'backups') return { page: 'backups' };
   if (parts[0] === 'connect') return { page: 'connect' };
+  if (parts[0] === 'redis') {
+    if (parts[1] === 'p' && parts[2]) return { page: 'redisProject', project: parts[2], tab: parts[3] || 'browser' };
+    return { page: 'redis' };
+  }
   if (parts[0] === 'db' && parts[1]) {
     const db = parts[1];
     if (parts[2] === 'sql') return { page: 'sql', db };
@@ -338,6 +342,8 @@ const link = {
   keys: () => '#/keys',
   backups: () => '#/backups',
   connect: () => '#/connect',
+  redis: () => '#/redis',
+  redisProject: (id, tab = 'browser') => `#/redis/p/${enc(id)}/${tab}`,
   db: (db) => `#/db/${enc(db)}`,
   sql: (db) => `#/db/${enc(db)}/sql`,
   table: (db, s, t, tab = 'data') => `#/db/${enc(db)}/t/${enc(s)}/${enc(t)}/${tab}`,
@@ -528,6 +534,8 @@ function renderSidebar() {
         h('div', { class: 'nav-label' }, 'Access'),
         navItem(link.roles(), 'users', 'Roles & permissions', 'roles'),
         navItem(link.keys(), 'key', 'API keys', 'keys'),
+        h('div', { class: 'nav-label' }, 'Redis'),
+        navItem(link.redis(), 'layers', 'Redis projects', 'redis,redisProject'),
         h('div', { class: 'nav-label' }, 'Operations'),
         navItem(link.backups(), 'archive', 'Backup & restore', 'backups'),
         navItem(link.connect(), 'plug', 'Connection guide', 'connect'),
@@ -625,7 +633,7 @@ async function route() {
   }
   if (seq !== renderSeq) return;
   renderSidebar();
-  const views = { overview: viewOverview, databases: viewDatabases, roles: viewRoles, keys: viewKeys, backups: viewBackups, connect: viewConnect, db: viewDb, sql: viewSql, table: viewTable };
+  const views = { overview: viewOverview, databases: viewDatabases, roles: viewRoles, keys: viewKeys, backups: viewBackups, connect: viewConnect, redis: viewRedis, redisProject: viewRedisProject, db: viewDb, sql: viewSql, table: viewTable };
   try {
     await views[r.page](r, seq);
   } catch (e) {
@@ -641,7 +649,7 @@ function openPalette() {
   const pages = [
     ['Overview', link.overview(), 'home'], ['Databases', link.databases(), 'db'], ['SQL console', link.sql(state.db), 'terminal'],
     ['Roles & permissions', link.roles(), 'users'], ['API keys', link.keys(), 'key'], ['Backup & restore', link.backups(), 'archive'],
-    ['Connection guide', link.connect(), 'plug'],
+    ['Connection guide', link.connect(), 'plug'], ['Redis projects', link.redis(), 'layers'],
   ];
   const input = h('input', { placeholder: 'Search tables, databases and pages…', 'aria-label': 'Search', autocomplete: 'off', spellcheck: 'false' });
   const list = h('div', { class: 'palette-list' });
@@ -660,6 +668,7 @@ function openPalette() {
     const groups = [
       ['Tables in ' + (state.db || '') + '.' + state.schema, state.tables.filter(t => match(t.name)).slice(0, 30).map(t => ({ label: t.name, href: link.table(state.db, state.schema, t.name), ic: t.kind === 'v' || t.kind === 'm' ? 'view' : 'table', hint: t.row_estimate ? shortNum(t.row_estimate) + ' rows' : '' }))],
       ['Databases', state.dbs.filter(d => d.can_connect && match(d.name)).map(d => ({ label: d.name, href: link.db(d.name), ic: 'db', hint: fmtBytes(d.size_bytes) }))],
+      ['Redis projects', (state.redisProjects || []).filter(p => match(p.id)).map(p => ({ label: p.id, href: link.redisProject(p.id), ic: 'layers', hint: p.keys != null ? fmtNum(p.keys) + ' keys' : '' }))],
       ['Pages', pages.filter(p => match(p[0])).map(p => ({ label: p[0], href: p[1], ic: p[2], hint: '' }))],
     ];
     clear(list);
@@ -1728,6 +1737,520 @@ async function editKeyModal(k) {
   if (res) { toast('Key updated'); route(); }
 }
 
+// ============================================================ Central Redis
+const R_TABS = [['browser', 'Browser'], ['console', 'Console'], ['keys', 'API keys'], ['usage', 'Usage'], ['settings', 'Settings']];
+const R_TYPES = { string: 'STR', list: 'LST', hash: 'HSH', set: 'SET', zset: 'ZST', stream: 'STM' };
+const rPath = (id) => `/api/redis/projects/${enc(id)}`;
+
+function fmtTtl(s) {
+  if (s == null) return '—';
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+  return Math.floor(s / 86400) + 'd ' + Math.floor((s % 86400) / 3600) + 'h';
+}
+function fmtUptime(sec) { return since(new Date(Date.now() - sec * 1000).toISOString()); }
+function typeBadge(t) { return h('span', { class: 'badge mono', title: t }, R_TYPES[t] || String(t || '—').slice(0, 3).toUpperCase()); }
+function pretty(v) { return typeof v === 'string' ? v : JSON.stringify(v, null, 2); }
+
+function redisDisabledView(st) {
+  return h('div', { class: 'section' },
+    h('div', { class: 'section-head' }, h('h3', null, st.enabled ? 'Cannot reach Redis' : 'Redis is not configured')),
+    h('div', { class: 'section-body stack' },
+      st.error && h('div', { class: 'error-box', style: { margin: 0 } }, st.error),
+      h('p', { style: { margin: 0 } }, 'Set ', h('code', null, 'REDIS_URL'), ' in the server\'s ', h('code', null, '.env'), ' and redeploy:'),
+      codeBlock('REDIS_URL=redis://central-redis:6379/0\n# with a password:  redis://:PASSWORD@central-redis:6379/0'),
+      h('p', { class: 'muted', style: { margin: 0 } }, 'Both containers must share a Docker network:'),
+      codeBlock('docker network connect proxy_network central-redis')));
+}
+
+// ---------- projects home
+async function viewRedis(r, seq) {
+  setMain({ title: 'Redis', loading: true });
+  const [st, projects] = await Promise.all([GET('/api/redis/status'), GET('/api/redis/projects').catch(() => [])]);
+  if (seq !== renderSeq) return;
+  state.redisProjects = projects;
+  const i = st.info || {};
+  const memPct = i.maxmemory ? Math.min(100, Math.round((i.used_memory / i.maxmemory) * 100)) : null;
+
+  const cards = st.connected ? h('div', { class: 'cards' },
+    statCard('Server', 'server', [h('span', { class: 'dot' }), 'Connected'], `${st.ping_ms} ms ping · up ${fmtUptime(i.uptime_in_seconds || 0)}`),
+    statCard('Redis', 'layers', i.redis_version || '—', h('span', { class: 'badges' }, h('span', { class: 'badge' }, i.role || 'master'), h('span', { class: 'badge mono' }, st.url_host))),
+    statCard('Memory', 'hdd', i.used_memory_human || '—', i.maxmemory ? `of ${i.maxmemory_human} · ${i.maxmemory_policy}` : 'no maxmemory limit',
+      memPct != null && h('div', { class: 'bar' }, h('i', { style: { width: memPct + '%', background: memPct > 85 ? 'var(--danger)' : '' } }))),
+    statCard('Keys', 'key', fmtNum(st.dbsize), `${fmtNum(i.expired_keys)} expired · ${fmtNum(i.evicted_keys)} evicted`),
+    statCard('Clients', 'activity', fmtNum(i.connected_clients), `${fmtNum(i.instantaneous_ops_per_sec)} ops/s now`),
+    statCard('Hit rate', 'gauge', st.hit_rate == null ? '—' : st.hit_rate + '%', `${shortNum(i.keyspace_hits || 0)} hits · ${shortNum(i.keyspace_misses || 0)} misses`)) : redisDisabledView(st);
+
+  const rows = projects.map(p => h('tr', null,
+    h('td', null, h('a', { href: link.redisProject(p.id), class: 'name-cell mono' }, icon('layers', 14), p.id),
+      p.name && p.name !== p.id && h('div', { class: 'faint small', style: { paddingLeft: '22px' } }, p.name)),
+    h('td', { class: 'num' }, p.keys == null ? '—' : fmtNum(p.keys)),
+    h('td', { class: 'num' }, p.bytes == null ? '—' : fmtBytes(p.bytes)),
+    h('td', { class: 'num' }, p.requests_24h == null ? '—' : fmtNum(p.requests_24h),
+      p.errors_24h ? h('span', { class: 'badge danger', style: { marginLeft: '6px' } }, p.errors_24h + ' err') : null),
+    h('td', { class: 'num' }, p.key_count),
+    h('td', { class: 'muted nowrap' }, p.last_used_at ? since(p.last_used_at) + ' ago' : 'never'),
+    h('td', null, p.imported_from && h('span', { class: 'badge' }, 'imported')),
+    h('td', { class: 'actions' },
+      btn('Browse', () => go(link.redisProject(p.id, 'browser')), { class: 'sm ghost', icon: 'search' }),
+      btn('Keys', () => go(link.redisProject(p.id, 'keys')), { class: 'sm ghost', icon: 'key' }))));
+
+  setMain({
+    title: 'Redis',
+    sub: 'Central Redis: one isolated namespace per project, sk_live_ API keys, REST endpoints at /redis/{project}/…',
+    badges: st.connected ? h('span', { class: 'badge ok' }, 'online') : h('span', { class: 'badge danger' }, 'offline'),
+    actions: [btn('Refresh', () => route(), { icon: 'refresh' }), btn('Import from MongoDB', () => redisImportModal(), { icon: 'upload' }),
+      btn('New project', () => redisNewProject(), { class: 'primary', icon: 'plus', disabled: !st.connected })],
+    body: [cards,
+      h('div', { class: 'section' },
+        h('div', { class: 'section-head' }, h('h3', null, 'Projects'), h('span', { class: 'count' }, projects.length)),
+        projects.length ? h('div', { class: 'scroll-x' }, h('table', { class: 'list' },
+          h('thead', null, h('tr', null, h('th', null, 'Project'), h('th', { class: 'num' }, 'Keys'), h('th', { class: 'num' }, 'Memory'),
+            h('th', { class: 'num' }, 'Requests 24h'), h('th', { class: 'num' }, 'API keys'), h('th', null, 'Last used'), h('th', null, ''), h('th', null, ''))),
+          h('tbody', null, rows))) :
+          h('div', { class: 'empty' }, 'No projects yet. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); redisNewProject(); } }, 'Create one'),
+            ', or ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); redisImportModal(); } }, 'import them'), ' from the old MongoDB.')),
+      st.connected && Object.keys(st.keyspace || {}).length > 0 && h('div', { class: 'section' },
+        h('div', { class: 'section-head' }, h('h3', null, 'Keyspace')),
+        h('div', { class: 'kv' }, Object.entries(st.keyspace).map(([db, v]) => h('div', null, h('div', { class: 'k mono' }, db),
+          h('span', { class: 'v' }, `${fmtNum(v.keys)} keys · ${fmtNum(v.expires)} with TTL`))))),
+    ],
+  });
+}
+
+async function redisNewProject() {
+  const id = h('input', { class: 'input mono', placeholder: 'checkout_svc', autocomplete: 'off' });
+  const name = h('input', { class: 'input', placeholder: 'Checkout service' });
+  const desc = h('input', { class: 'input', placeholder: 'optional' });
+  const res = await modal({
+    title: 'New Redis project', drawer: true,
+    body: [field('Project ID', id, 'lowercase letters, numbers, underscores; becomes the URL and key prefix'), field('Name', name), field('Description', desc),
+      h('div', { class: 'callout info' }, 'Every key is stored as ', h('code', null, 'project_id:key'), ', so projects can never read each other\'s data. A first API key is created for you.')],
+    actions: [{ label: 'Cancel' }, { label: 'Create project', primary: true, onClick: () => POST('/api/redis/projects', { project_id: id.value, name: name.value, description: desc.value }) }],
+  });
+  if (!res) return;
+  await redisShowKey(res.api_key, res.project.id, 'Project created');
+  go(link.redisProject(res.project.id, 'browser'));
+}
+
+async function redisImportModal() {
+  const uri = h('input', { class: 'input mono', placeholder: 'mongodb+srv://user:pass@cluster…/  (blank = REDIS_IMPORT_MONGODB_URI)' });
+  const db = h('input', { class: 'input mono', value: 'central_redis' });
+  const res = await modal({
+    title: 'Import from the old MongoDB',
+    body: [h('p', { style: { margin: 0 } }, 'Copies every project and API key from the standalone Central Redis service. Keys are imported as their SHA-256 digests, so existing clients keep working after they switch to the new base URL. Running it again skips anything already imported.'),
+      field('MONGODB_URI', uri), field('Database', db, 'MONGODB_DB of the old service')],
+    actions: [{ label: 'Cancel' }, { label: 'Import', primary: true, onClick: () => POST('/api/redis/import', { mongodb_uri: uri.value, database: db.value }) }],
+  });
+  if (!res) return;
+  toast(`Imported ${res.projects_added} project(s) and ${res.keys_added} key(s)` + (res.skipped ? ` · ${res.skipped} skipped` : ''), 'ok', 'Import finished');
+  route();
+}
+
+function redisSamples(key, base) {
+  const curl = `# write (value can be any JSON; ttl in seconds is optional)
+curl -X POST ${base}/set/cart:42 \\
+  -H "x-api-key: ${key}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"value": {"items": 3}, "ttl": 3600}'
+
+# read
+curl ${base}/get/cart:42 -H "x-api-key: ${key}"
+
+# list keys (SCAN; pass cursor back until "done": true)
+curl "${base}/keys?pattern=cart:*" -H "x-api-key: ${key}"`;
+  const py = `import os, requests
+
+BASE = "${base}"
+H = {"x-api-key": os.environ.get("CENTRAL_REDIS_KEY", "${key}")}
+
+requests.post(f"{BASE}/set/cart:42", json={"value": {"items": 3}, "ttl": 3600}, headers=H).raise_for_status()
+cart = requests.get(f"{BASE}/get/cart:42", headers=H).json()["value"]
+requests.post(f"{BASE}/incr/views", json={"by": 1}, headers=H)
+requests.post(f"{BASE}/hset/user:1", json={"mapping": {"name": "Asha", "plan": "pro"}}, headers=H)`;
+  const js = `const BASE = "${base}";
+const KEY = process.env.CENTRAL_REDIS_KEY ?? "${key}";
+const call = (method, path, body) => fetch(BASE + path, {
+  method, headers: { "x-api-key": KEY, "Content-Type": "application/json" },
+  body: body ? JSON.stringify(body) : undefined,
+}).then(r => r.ok ? r.json() : Promise.reject(r));
+
+await call("POST", "/set/cart:42", { value: { items: 3 }, ttl: 3600 });
+const { value } = await call("GET", "/get/cart:42");
+await call("POST", "/lpush/queue", { values: ["job-1", "job-2"] });`;
+  const ops = `Strings  GET  /get/{key}            POST /set/{key} {value, ttl?}     DELETE /delete/{key}
+         POST /expire/{key} {ttl}   GET  /ttl/{key}   POST /incr/{key} {by}
+         POST /mset {pairs, ttl?}   POST /mget ["k1","k2"]
+Lists    POST /lpush|rpush/{key} {values}   GET /lrange/{key}?start&end   DELETE /lpop|rpop/{key}
+Hashes   POST /hset/{key} {mapping}  GET /hget/{key}/{field}  GET /hgetall/{key}  DELETE /hdel/{key}/{field}
+Sets     POST /sadd/{key} {members}  GET /smembers/{key}  POST /srem/{key} {members}
+Keys     GET /keys?pattern&cursor&limit   GET /scan (+ type, ttl, size)   DELETE /flush
+
+Header: x-api-key: sk_live_…  (or Authorization: Bearer sk_live_…)
+Errors: 401 bad key · 404 unknown project · 409 wrong type (e.g. GET on a list) · 422 bad body`;
+  return { curl, Python: py, 'Node / JS': js, Reference: ops };
+}
+
+function samplesBlock(samples) {
+  const seg = h('div', { class: 'seg' });
+  let current = Object.keys(samples)[0];
+  const pre = h('pre', { class: 'code', style: { maxHeight: '340px' } });
+  const draw = () => {
+    clear(seg);
+    for (const n of Object.keys(samples)) seg.appendChild(h('button', { type: 'button', class: n === current ? 'active' : '', onclick: () => { current = n; draw(); } }, n));
+    pre.textContent = samples[current];
+  };
+  draw();
+  return [h('div', { class: 'row', style: { gap: '8px' } }, seg, h('span', { class: 'grow' }), btn('Copy', () => copyText(samples[current]), { class: 'sm', icon: 'copy' })), pre];
+}
+
+function redisShowKey(key, projectId, title = 'API key created') {
+  const base = location.origin + '/redis/' + projectId;
+  return modal({
+    title, size: 'wide', dismissable: false,
+    body: [field('API key', secretBox(key)),
+      h('div', { class: 'callout' }, 'Copy it now. Only a SHA-256 hash is stored, so it can never be shown again.'),
+      field('Base URL', secretBox(base)), ...samplesBlock(redisSamples(key, base))],
+    actions: [{ label: "I've saved it", primary: true }],
+  });
+}
+
+// ---------- project page
+async function viewRedisProject(r, seq) {
+  const tab = R_TABS.some(t => t[0] === r.tab) ? r.tab : 'browser';
+  const seg = h('div', { class: 'seg' }, R_TABS.map(([k, l]) => h('a', { href: link.redisProject(r.project, k), class: k === tab ? 'active' : '' }, l)));
+  const crumbs = [['Redis', link.redis()]];
+  setMain({ title: r.project, crumbs, flush: tab === 'browser' || tab === 'console', monoTitle: true, actions: [seg], loading: true });
+  const p = await GET(rPath(r.project));
+  if (seq !== renderSeq) return;
+  const sub = `${fmtNum(p.stats.keys)}${p.stats.truncated ? '+' : ''} keys · ${fmtBytes(p.stats.bytes)} · ${fmtNum(p.usage_24h.requests)} requests in 24h`;
+  const head = { title: r.project, crumbs, sub, monoTitle: true, actions: [seg], badges: p.name !== p.id ? h('span', { class: 'badge' }, p.name) : null };
+  const views = { browser: redisBrowser, console: redisConsole, keys: redisKeysTab, usage: redisUsage, settings: redisSettings };
+  return views[tab](p, head, seq, r);
+}
+
+async function redisBrowser(p, head, seq) {
+  const g = state.redisBrowse && state.redisBrowse.project === p.id ? state.redisBrowse : (state.redisBrowse = { project: p.id, pattern: '*', type: 'all', open: null });
+  const pattern = h('input', { class: 'input sm mono search', value: g.pattern, placeholder: 'pattern, e.g. user:*', 'aria-label': 'Key pattern' });
+  const typeSel = select([['all', 'All types'], ['string', 'Strings'], ['list', 'Lists'], ['hash', 'Hashes'], ['set', 'Sets'], ['zset', 'Sorted sets']], g.type, { class: 'input sm', style: { width: 'auto' } });
+  const tbody = h('tbody');
+  const more = btn('Load more', () => load(), { class: 'sm' });
+  const countEl = h('span', { class: 'muted small' });
+  const gridArea = h('div', { class: 'grid-area' });
+  let cursor = 0;
+  let shown = 0;
+  let panel = null;
+  let openTr = null;
+
+  const apply = () => { g.pattern = pattern.value.trim() || '*'; g.type = typeSel.value; reset(); };
+  pattern.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
+  typeSel.addEventListener('change', apply);
+
+  async function load() {
+    more.disabled = true;
+    try {
+      const res = await GET(`${rPath(p.id)}/browse${qs({ pattern: g.pattern, cursor, limit: 100, type: g.type })}`);
+      cursor = res.cursor;
+      const frag = document.createDocumentFragment();
+      for (const k of res.keys) {
+        const tr = h('tr', { onclick: () => openKey(k.key, tr) },
+          h('td', { class: 'mono' }, k.key), h('td', null, typeBadge(k.type)),
+          h('td', { class: 'mono muted' }, k.persistent ? '∞' : fmtTtl(k.ttl)),
+          h('td', { class: 'num muted' }, k.size == null ? '—' : fmtBytes(k.size)));
+        if (g.open === k.key) setTimeout(() => openKey(k.key, tr), 0);
+        frag.appendChild(tr);
+      }
+      tbody.appendChild(frag);
+      shown += res.keys.length;
+      countEl.textContent = `${fmtNum(shown)} key${shown === 1 ? '' : 's'}` + (res.done ? '' : ' · more available');
+      more.style.display = res.done ? 'none' : '';
+      if (!shown && res.done) tbody.appendChild(h('tr', null, h('td', { colspan: '4', class: 'faint', style: { textAlign: 'center', padding: '28px' } }, g.pattern === '*' && g.type === 'all' ? 'This project has no keys yet.' : 'No keys match.')));
+    } catch (e) { toastErr(e); } finally { more.disabled = false; }
+  }
+  function reset() { clear(tbody); cursor = 0; shown = 0; closeKey(); load(); }
+
+  function closeKey() { if (panel) panel.remove(); if (openTr) openTr.classList.remove('open'); panel = null; openTr = null; g.open = null; }
+  async function openKey(key, tr) {
+    closeKey();
+    g.open = key;
+    openTr = tr; if (tr) tr.classList.add('open');
+    let entry = null;
+    if (key != null) {
+      try { entry = await GET(`${rPath(p.id)}/keys/${enc(key)}`); } catch (e) { toastErr(e); closeKey(); return; }
+    }
+    const isNew = !entry;
+    const keyIn = h('input', { class: 'input mono', value: key || '', placeholder: 'key name', disabled: !isNew });
+    const tSel = select(['string', 'list', 'hash', 'set'], entry ? entry.type : 'string', { class: 'input sm', disabled: entry && !['string', 'list', 'hash', 'set'].includes(entry.type) });
+    const val = h('textarea', { class: 'input', rows: 12, spellcheck: 'false', style: { minHeight: '220px' } });
+    val.value = entry ? pretty(entry.value) : '';
+    const hint = h('div', { class: 'faint small' });
+    const syncHint = () => { hint.textContent = { string: 'Text, or any JSON value.', list: 'JSON array, e.g. ["a", "b"]', hash: 'JSON object, e.g. {"name": "Asha"}', set: 'JSON array of members' }[tSel.value]; };
+    tSel.addEventListener('change', syncHint); syncHint();
+    const ttlIn = h('input', { class: 'input sm mono', type: 'number', min: '0', placeholder: 'none', value: entry && entry.ttl ? String(entry.ttl) : '' });
+    const parseVal = () => {
+      const raw = val.value;
+      if (tSel.value === 'string') { try { const j = JSON.parse(raw); return typeof j === 'string' ? raw : j; } catch { return raw; } }
+      let j;
+      try { j = JSON.parse(raw || (tSel.value === 'hash' ? '{}' : '[]')); } catch { throw new Error('Value must be valid JSON for a ' + tSel.value); }
+      if (tSel.value === 'hash' && (typeof j !== 'object' || Array.isArray(j) || j === null)) throw new Error('A hash needs a JSON object');
+      if (tSel.value !== 'hash' && !Array.isArray(j)) throw new Error(`A ${tSel.value} needs a JSON array`);
+      return j;
+    };
+    const save = btn(isNew ? 'Create key' : 'Save', async () => {
+      const name = keyIn.value.trim();
+      if (!name) { toast('Enter a key name', 'error'); return; }
+      let value;
+      try { value = parseVal(); } catch (e) { toast(e.message, 'error'); return; }
+      save.disabled = true;
+      try {
+        await api('PUT', `${rPath(p.id)}/keys/${enc(name)}`, { type: tSel.value, value, ttl: ttlIn.value ? Number(ttlIn.value) : null });
+        toast(isNew ? 'Key created' : 'Saved');
+        g.open = name;
+        reset();
+      } catch (e) { toastErr(e, 'Save failed'); } finally { save.disabled = false; }
+    }, { class: 'primary' });
+    const meta = entry ? h('div', { class: 'kv', style: { margin: '0 -16px', borderBottom: '1px solid var(--border)' } },
+      h('div', null, h('div', { class: 'k' }, 'Type'), typeBadge(entry.type)),
+      h('div', null, h('div', { class: 'k' }, 'TTL'), h('span', { class: 'v' }, entry.persistent ? 'no expiry' : fmtTtl(entry.ttl))),
+      h('div', null, h('div', { class: 'k' }, 'Size'), h('span', { class: 'v' }, entry.size == null ? '—' : fmtBytes(entry.size))),
+      entry.length != null && h('div', null, h('div', { class: 'k' }, 'Length'), h('span', { class: 'v' }, fmtNum(entry.length) + (entry.length > 1000 ? ' (first 1,000 shown)' : '')))) : null;
+    panel = h('aside', { class: 'rowpanel', 'aria-label': 'Key details' },
+      h('div', { class: 'rowpanel-head' }, icon('key'), h('h2', { class: 'mono', style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: key || '' }, key || 'New key'),
+        entry && btn('', () => copyText(pretty(entry.value)), { class: 'sm ghost icon', icon: 'copy', title: 'Copy value' }),
+        btn('', closeKey, { class: 'sm ghost icon', icon: 'x', title: 'Close' })),
+      h('div', { class: 'rowpanel-body stack', style: { paddingTop: '12px', gap: '12px' } },
+        meta,
+        isNew && field('Key', keyIn),
+        h('div', { class: 'grid2' }, field('Type', tSel), field('TTL (seconds)', ttlIn, entry ? 'saving resets it' : '')),
+        field('Value', val), hint,
+        entry && h('div', { class: 'row', style: { gap: '6px' } },
+          btn('Remove expiry', async () => { try { await POST(`${rPath(p.id)}/ttl/${enc(key)}`, { ttl: null }); toast('Expiry removed'); openKey(key, tr); } catch (e) { toastErr(e); } }, { class: 'sm', disabled: entry.persistent }),
+          btn('Expire in 1h', async () => { try { await POST(`${rPath(p.id)}/ttl/${enc(key)}`, { ttl: 3600 }); toast('Expires in 1 hour'); openKey(key, tr); } catch (e) { toastErr(e); } }, { class: 'sm' }))),
+      h('div', { class: 'rowpanel-foot' },
+        entry && btn('', async () => {
+          if (!await confirmDanger({ title: `Delete ${key}?`, message: 'The key and its value are removed immediately.' })) return;
+          try { await DEL(`${rPath(p.id)}/keys/${enc(key)}`); toast('Key deleted'); reset(); } catch (e) { toastErr(e); }
+        }, { class: 'danger icon', icon: 'trash', title: 'Delete key' }),
+        h('span', { class: 'grow' }), save));
+    gridArea.appendChild(panel);
+    if (isNew) setTimeout(() => keyIn.focus(), 20);
+  }
+
+  const toolbar = h('div', { class: 'toolbar' },
+    h('div', { class: 'searchbox' }, icon('search', 13), pattern), typeSel,
+    btn('', () => reset(), { class: 'sm ghost icon', icon: 'refresh', title: 'Refresh' }), countEl,
+    h('span', { class: 'grow' }),
+    btn('Flush all', async () => {
+      if (!await confirmDanger({ title: `Delete every key in ${p.id}?`, message: 'All data in this project is removed. API keys and settings stay.', typeToConfirm: p.id, confirmLabel: 'Flush project' })) return;
+      try { const res = await POST(`${rPath(p.id)}/flush`); toast(`Deleted ${fmtNum(res.deleted)} keys`); reset(); } catch (e) { toastErr(e); }
+    }, { class: 'sm danger', icon: 'trash' }),
+    btn('New key', () => openKey(null, null), { class: 'sm primary', icon: 'plus' }));
+  gridArea.appendChild(h('div', { class: 'grid-wrap' },
+    h('table', { class: 'grid clickable' },
+      h('thead', null, h('tr', null, ['Key', 'Type', 'TTL', 'Size'].map(x => h('th', null, h('div', { class: 'h', style: { cursor: 'default' } }, h('span', { class: 'n' }, x)))))),
+      tbody),
+    h('div', { style: { padding: '12px 20px' } }, more)));
+  setMain(Object.assign({}, head, { flush: true, body: [toolbar, gridArea] }));
+  load();
+}
+
+const CONSOLE_BODIES = {
+  set: { value: { hello: 'world' }, ttl: 3600 }, expire: { ttl: 60 }, incr: { by: 1 },
+  mset: { pairs: { a: 1, b: 2 } }, mget: { keys: ['a', 'b'] }, lpush: { values: ['x'] }, rpush: { values: ['x'] },
+  lrange: { start: 0, end: -1 }, hset: { mapping: { field: 'value' } }, sadd: { members: ['x'] }, srem: { members: ['x'] },
+  keys: { pattern: '*', cursor: 0, limit: 50 }, scan: { pattern: '*', cursor: 0, limit: 50 },
+};
+
+async function redisConsole(p, head, seq) {
+  const ops = state.redisOps || (state.redisOps = await GET('/api/redis/console/operations'));
+  if (seq !== renderSeq) return;
+  const opSel = h('select', { class: 'input sm mono', style: { width: 'auto' } },
+    Object.entries(ops.groups).map(([g, list]) => h('optgroup', { label: g }, list.map(o => h('option', { value: o }, o)))));
+  opSel.value = store.get('rconsole:op', 'get');
+  const keyIn = h('input', { class: 'input sm mono', placeholder: 'key', style: { width: '240px' } });
+  const fieldIn = h('input', { class: 'input sm mono', placeholder: 'field', style: { width: '160px' } });
+  const bodyIn = h('textarea', { class: 'editor', spellcheck: 'false', style: { height: '150px', minHeight: '110px' } });
+  const reqLine = h('span', { class: 'mono small muted' });
+  const runBtn = btn('Send', () => run(), { class: 'sm primary', icon: 'play', title: (IS_MAC ? '⌘' : 'Ctrl') + ' + Enter' });
+  const out = h('div', { class: 'results' }, h('div', { class: 'loading' }, h('span', { class: 'faint' }, 'Runs exactly like the public API, and is counted in Usage.')));
+  const sync = () => {
+    const spec = ops.specs[opSel.value];
+    keyIn.style.display = spec.needs_key ? '' : 'none';
+    fieldIn.style.display = spec.path.includes('{field}') ? '' : 'none';
+    const b = CONSOLE_BODIES[opSel.value];
+    bodyIn.style.display = b ? '' : 'none';
+    if (b && bodyIn.dataset.op !== opSel.value) { bodyIn.value = JSON.stringify(b, null, 2); bodyIn.dataset.op = opSel.value; }
+    reqLine.textContent = `${spec.method} /redis/${p.id}${spec.path.replace('{key}', keyIn.value || '{key}').replace('{field}', fieldIn.value || '{field}')}`;
+    store.set('rconsole:op', opSel.value);
+  };
+  opSel.addEventListener('change', sync); keyIn.addEventListener('input', sync); fieldIn.addEventListener('input', sync);
+  const onKey = (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || e.target.tagName === 'INPUT')) { e.preventDefault(); run(); } };
+  [bodyIn, keyIn, fieldIn].forEach(x => x.addEventListener('keydown', onKey));
+  sync();
+
+  async function run() {
+    let body = {};
+    if (bodyIn.style.display !== 'none' && bodyIn.value.trim()) {
+      try { body = JSON.parse(bodyIn.value); } catch { toast('Body must be valid JSON', 'error'); return; }
+    }
+    if (opSel.value === 'flush' && !await confirmDanger({ title: `Flush ${p.id}?`, message: 'Every key in this project is deleted.', typeToConfirm: p.id, confirmLabel: 'Flush' })) return;
+    runBtn.disabled = true;
+    try {
+      const res = await POST(`${rPath(p.id)}/console`, { operation: opSel.value, key: keyIn.value, field: fieldIn.value, body });
+      const ok = res.status < 400;
+      clear(out).appendChild(h('div', { class: 'result-meta' },
+        h('span', { class: ok ? 'ok' : '', style: ok ? null : { color: 'var(--danger)', fontWeight: 600 } }, (ok ? '✓ ' : '✕ ') + res.status),
+        h('span', { class: 'mono' }, res.method + ' ' + res.path), h('span', null, res.duration_ms + ' ms'), h('span', { class: 'grow' }),
+        btn('Copy', () => copyText(JSON.stringify(res.result, null, 2)), { class: 'sm', icon: 'copy' })));
+      out.appendChild(h('pre', { class: 'code', style: { margin: '14px 20px', maxHeight: 'none' } }, JSON.stringify(res.result, null, 2)));
+    } catch (e) { clear(out).appendChild(h('div', { class: 'error-box' }, e instanceof ApiError ? e.full : String(e))); } finally { runBtn.disabled = false; }
+  }
+
+  setMain(Object.assign({}, head, {
+    flush: true,
+    body: h('div', { class: 'sql-layout' },
+      h('div', { class: 'editor-wrap' },
+        h('div', { class: 'editor-bar', style: { borderBottom: '1px solid var(--border)' } }, opSel, keyIn, fieldIn, runBtn, h('span', { class: 'grow' }), reqLine),
+        bodyIn),
+      out),
+  }));
+  (keyIn.style.display !== 'none' ? keyIn : bodyIn).focus();
+}
+
+async function redisKeysTab(p, head, seq) {
+  const keys = await GET(`${rPath(p.id)}/api-keys`);
+  if (seq !== renderSeq) return;
+  const base = location.origin + '/redis/' + p.id;
+  const newKey = async () => {
+    const name = h('input', { class: 'input', placeholder: 'e.g. production backend' });
+    const res = await modal({ title: 'New API key', body: field('Name', name), actions: [{ label: 'Cancel' }, { label: 'Create key', primary: true, onClick: () => POST(`${rPath(p.id)}/api-keys`, { name: name.value }) }] });
+    if (res) { await redisShowKey(res.api_key, p.id); route(); }
+  };
+  setMain(Object.assign({}, head, {
+    body: [
+      h('div', { class: 'section' },
+        h('div', { class: 'section-head' }, h('h3', null, 'API keys'), h('span', { class: 'count' }, keys.length),
+          h('div', { class: 'actions' }, btn('New API key', newKey, { class: 'sm primary', icon: 'plus' }))),
+        keys.length ? h('div', { class: 'scroll-x' }, h('table', { class: 'list' },
+          h('thead', null, h('tr', null, ['Name', 'Key', 'Created', 'Last used', ''].map(x => h('th', null, x)))),
+          h('tbody', null, keys.map(k => h('tr', null,
+            h('td', null, h('strong', null, k.name)),
+            h('td', { class: 'mono muted' }, k.masked),
+            h('td', { class: 'muted nowrap' }, since(k.created_at) + ' ago', k.rotated_at && h('div', { class: 'faint small' }, 'rotated ' + since(k.rotated_at) + ' ago')),
+            h('td', { class: 'muted nowrap' }, k.last_used_at ? since(k.last_used_at) + ' ago' : 'never'),
+            h('td', { class: 'actions' },
+              btn('Rotate', async () => {
+                if (!await confirmDanger({ title: `Rotate "${k.name}"?`, message: 'A new key replaces this one. Clients using the old key stop working immediately.', confirmLabel: 'Rotate' })) return;
+                try { const res = await POST(`${rPath(p.id)}/api-keys/${enc(k.id)}/rotate`); await redisShowKey(res.api_key, p.id, 'Key rotated'); route(); } catch (e) { toastErr(e); }
+              }, { class: 'sm' }),
+              btn('Revoke', async () => {
+                if (!await confirmDanger({ title: `Revoke "${k.name}"?`, message: 'Clients using this key get 401 immediately.', confirmLabel: 'Revoke' })) return;
+                try { await DEL(`${rPath(p.id)}/api-keys/${enc(k.id)}`); toast('Key revoked'); route(); } catch (e) { toastErr(e); }
+              }, { class: 'sm danger' }))))))) :
+          h('div', { class: 'empty' }, 'No keys. Create one to call this project from an app.')),
+      h('div', { class: 'section' },
+        h('div', { class: 'section-head' }, h('h3', null, 'Connect your app'), h('div', { class: 'desc' }, 'Base URL ', h('code', null, base), '. Swap YOUR_API_KEY for a key from above.')),
+        h('div', { class: 'section-body stack', style: { gap: '10px' } }, samplesBlock(redisSamples('YOUR_API_KEY', base)))),
+    ],
+  }));
+}
+
+function barChart(points) {
+  const W = 900, H = 160, pad = 24;
+  const max = Math.max(1, ...points.map(p => p.requests));
+  const bw = (W - pad) / Math.max(1, points.length);
+  const bars = points.map((p, i) => {
+    const hReq = (p.requests / max) * (H - 30);
+    const hErr = (p.errors / max) * (H - 30);
+    const x = pad + i * bw + 1;
+    return `<g><title>${new Date(p.at).toLocaleString()}\n${p.requests} requests, ${p.errors} errors, avg ${p.avg_ms} ms</title>` +
+      `<rect x="${x}" y="${H - 20 - hReq}" width="${Math.max(1, bw - 2)}" height="${hReq}" rx="2" fill="var(--accent)" opacity=".85"/>` +
+      (p.errors ? `<rect x="${x}" y="${H - 20 - hErr}" width="${Math.max(1, bw - 2)}" height="${hErr}" rx="2" fill="var(--danger)"/>` : '') + '</g>';
+  }).join('');
+  const lbl = (p) => p.at.length <= 10 ? p.at.slice(5) : new Date(p.at).getHours() + ':00';
+  const ticks = points.length ? [0, Math.floor(points.length / 2), points.length - 1].map(i => `<text x="${pad + i * bw + bw / 2}" y="${H - 4}" text-anchor="middle" font-size="10" fill="var(--faint)">${lbl(points[i])}</text>`).join('') : '';
+  return h('div', { style: { width: '100%' }, html: `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" role="img" aria-label="Requests over time">` +
+    `<text x="0" y="12" font-size="10" fill="var(--faint)">${fmtNum(max)}</text><line x1="${pad}" x2="${W}" y1="${H - 20}" y2="${H - 20}" stroke="var(--border)"/>${bars}${ticks}</svg>` });
+}
+
+async function redisUsage(p, head, seq, r) {
+  const range = store.get('rusage:range', '24h');
+  const u = await GET(`${rPath(p.id)}/usage${qs({ range })}`);
+  if (seq !== renderSeq) return;
+  const s = u.summary;
+  const rangeSeg = h('div', { class: 'seg' }, ['24h', '7d', '30d'].map(x => h('button', { type: 'button', class: x === range ? 'active' : '', onclick: () => { store.set('rusage:range', x); route(); } }, x)));
+  const entryRow = (e) => h('tr', null,
+    h('td', { class: 'muted nowrap' }, since(new Date(e.t).toISOString()) + ' ago'),
+    h('td', { class: 'mono' }, e.m), h('td', { class: 'mono' }, e.p),
+    h('td', null, h('span', { class: 'badge ' + (e.s >= 400 ? 'danger' : 'ok') }, e.s)),
+    h('td', { class: 'num muted' }, e.d + ' ms'), h('td', { class: 'muted' }, e.e || ''));
+  const logTable = (rows, empty) => rows.length ? h('div', { class: 'scroll-x' }, h('table', { class: 'list' },
+    h('thead', null, h('tr', null, ['When', 'Method', 'Path', 'Status', 'Time', 'Error'].map(x => h('th', null, x)))),
+    h('tbody', null, rows.map(entryRow)))) : h('div', { class: 'empty' }, empty);
+  setMain(Object.assign({}, head, {
+    body: [
+      h('div', { class: 'row', style: { marginBottom: '16px' } }, rangeSeg, h('span', { class: 'faint small' }, 'Percentiles are histogram bucket edges, so they are upper bounds.')),
+      h('div', { class: 'cards' },
+        statCard('Requests', 'activity', fmtNum(s.requests), `${fmtNum(s.errors)} errors · ${s.error_rate}%`),
+        statCard('Avg latency', 'gauge', s.avg_ms + ' ms', `p50 ≤ ${s.percentiles.p50} ms`),
+        statCard('p95 / p99', 'gauge', `${s.percentiles.p95} / ${s.percentiles.p99}`, 'milliseconds'),
+        statCard('Keys', 'key', fmtNum(p.stats.keys), fmtBytes(p.stats.bytes) + (p.stats.exact ? '' : ' (estimated)'))),
+      h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h3', null, 'Requests'), h('div', { class: 'desc' }, 'Blue: all requests · red: errors')),
+        h('div', { class: 'section-body' }, barChart(u.series))),
+      h('div', { class: 'cols' },
+        h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h3', null, 'Operations')),
+          Object.keys(s.operations).length ? h('table', { class: 'list' }, h('tbody', null, Object.entries(s.operations).map(([o, n]) => h('tr', null,
+            h('td', { class: 'mono' }, o), h('td', null, h('div', { class: 'size-cell' }, h('div', { class: 'bar' }, h('i', { style: { width: (n / Math.max(...Object.values(s.operations))) * 100 + '%' } })), h('span', null, fmtNum(n)))))))) :
+            h('div', { class: 'empty' }, 'No requests in this range.')),
+        h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h3', null, 'Largest keys')),
+          u.top_keys.length ? h('table', { class: 'list' }, h('tbody', null, u.top_keys.map(k => h('tr', null,
+            h('td', { class: 'mono' }, k.key), h('td', null, typeBadge(k.type)), h('td', { class: 'num' }, fmtBytes(k.size)))))) :
+            h('div', { class: 'empty' }, 'No keys.'))),
+      h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h3', null, 'Recent errors'), h('span', { class: 'count' }, u.errors.length)), logTable(u.errors, 'No errors recorded.')),
+      h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h3', null, 'Recent requests'), h('span', { class: 'count' }, u.recent.length)), logTable(u.recent, 'No requests yet.')),
+    ],
+  }));
+  void r;
+}
+
+async function redisSettings(p, head) {
+  const name = h('input', { class: 'input', value: p.name });
+  const desc = h('input', { class: 'input', value: p.description || '' });
+  const ttl = h('input', { class: 'input mono', type: 'number', min: '0', value: String(p.default_ttl || 0) });
+  const applyTtl = checkbox('Apply the default TTL to keys written from the browser without one', p.apply_default_ttl);
+  const saveBtn = btn('Save changes', async () => {
+    saveBtn.disabled = true;
+    try {
+      await PATCH(rPath(p.id), { name: name.value, description: desc.value, default_ttl: Number(ttl.value || 0), apply_default_ttl: applyTtl.input.checked });
+      toast('Saved'); route();
+    } catch (e) { toastErr(e); } finally { saveBtn.disabled = false; }
+  }, { class: 'primary' });
+  setMain(Object.assign({}, head, {
+    body: [
+      h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h3', null, 'Project')),
+        h('div', { class: 'section-body stack', style: { maxWidth: '640px' } },
+          field('Project ID', secretBox(p.id), 'fixed: it is the URL and the key prefix'),
+          field('Base URL', secretBox(p.base_url)),
+          h('div', { class: 'grid2' }, field('Name', name), field('Default TTL (seconds)', ttl, '0 = none')),
+          field('Description', desc), applyTtl, h('div', null, saveBtn))),
+      h('div', { class: 'section', style: { borderColor: 'var(--danger)' } },
+        h('div', { class: 'section-head' }, h('h3', { style: { color: 'var(--danger)' } }, 'Danger zone')),
+        h('div', { class: 'kv' },
+          h('div', null, h('div', { class: 'k' }, 'Flush all keys', h('small', null, 'Deletes every key in this project. API keys and settings stay.')),
+            btn('Flush', async () => {
+              if (!await confirmDanger({ title: `Flush ${p.id}?`, message: 'Every key in this project is deleted.', typeToConfirm: p.id, confirmLabel: 'Flush' })) return;
+              try { const res = await POST(`${rPath(p.id)}/flush`); toast(`Deleted ${fmtNum(res.deleted)} keys`); route(); } catch (e) { toastErr(e); }
+            }, { class: 'sm danger' })),
+          h('div', null, h('div', { class: 'k' }, 'Delete project', h('small', null, 'Removes all data, metrics and API keys. Clients get 404.')),
+            btn('Delete', async () => {
+              if (!await confirmDanger({ title: `Delete project ${p.id}?`, message: 'All keys, metrics and API keys are permanently removed.', typeToConfirm: p.id, confirmLabel: 'Delete project' })) return;
+              try { const res = await DEL(rPath(p.id)); toast(`Project deleted (${fmtNum(res.keys_deleted)} keys removed)`); go(link.redis()); } catch (e) { toastErr(e); }
+            }, { class: 'sm danger solid' })))),
+    ],
+  }));
+}
+
 // ============================================================ connection guide
 function copyField(label, value) {
   return h('div', { class: 'copy-field' }, h('label', null, label), h('span', { title: value }, value),
@@ -1759,6 +2282,7 @@ async function viewConnect(r, seq) {
         h('div', { class: 'section-body copy-grid' },
           copyField('Panel', location.origin),
           copyField('Data API', location.origin + '/v1'),
+          copyField('Redis API', location.origin + '/redis/{project}'),
           copyField('DB host', `${c.host}:${c.port}`),
           copyField('Database', db),
           c.public_host && copyField('Public host', `${c.public_host}:${c.public_port || 5432}`))),
@@ -1781,6 +2305,11 @@ async function viewConnect(r, seq) {
             h('li', null, 'Leave SSL off (the tunnel encrypts), then Test Connection.')),
           h('div', { class: 'faint small' }, 'Same thing from a terminal:'),
           codeBlock(`ssh -N -L 15432:127.0.0.1:5432 user@${site}\npsql "postgresql://USER:PASSWORD@localhost:15432/${db}"`)),
+        card('layers', 'Central Redis API', 'Key-value storage per project over HTTPS, with sk_live_ keys from Redis projects.',
+          h('ol', { class: 'steps' },
+            h('li', null, 'Create a project under ', h('a', { href: link.redis() }, 'Redis projects'), '; its first key is shown once.'),
+            h('li', null, 'Send it as ', h('code', null, 'x-api-key'), '. Keys are stored as ', h('code', null, 'project:key'), ' in the shared Redis.')),
+          codeBlock(`curl -X POST ${location.origin}/redis/PROJECT/set/cart:42 \\\n  -H "x-api-key: sk_live_…" -H "Content-Type: application/json" \\\n  -d '{"value": {"items": 3}, "ttl": 3600}'`)),
         card('shield', 'Tailscale', 'Private network between your own machines, with no SSH step.',
           h('ol', { class: 'steps' },
             h('li', null, 'Publish Postgres on the server\'s Tailscale IP only: ', h('code', null, 'ports: ["100.x.y.z:5432:5432"]'), '.'),
@@ -2662,6 +3191,7 @@ async function boot() {
     return;
   }
   renderShell();
+  GET('/api/redis/projects?stats=false').then((ps) => { state.redisProjects = ps; }).catch(() => {});
   GET('/api/connection-info').then((c) => { if (c.server_version) { state.serverVersion = c.server_version; renderSidebar(); } }).catch(() => {});
   try {
     await loadDatabases();

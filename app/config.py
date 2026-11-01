@@ -52,6 +52,9 @@ class Settings:
     google_client_secret: str = ""
     google_allowed_emails: list[str] = field(default_factory=list)
     google_redirect_url: str = ""
+    redis_url: str = ""
+    redis_pool_max: int = 20
+    redis_import_mongodb_uri: str = ""
 
     @property
     def google_enabled(self) -> bool:
@@ -133,6 +136,9 @@ def load_settings() -> Settings:
         google_client_secret=google_client_secret,
         google_allowed_emails=allowed,
         google_redirect_url=os.getenv("GOOGLE_REDIRECT_URL", "").strip(),
+        redis_url=os.getenv("REDIS_URL", "").strip(),
+        redis_pool_max=int(os.getenv("REDIS_POOL_MAX", "20") or 20),
+        redis_import_mongodb_uri=os.getenv("REDIS_IMPORT_MONGODB_URI", "").strip(),
     )
 
 
