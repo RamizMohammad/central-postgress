@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import time
 import os
 import urllib.request
 from contextlib import asynccontextmanager, suppress
@@ -20,8 +21,9 @@ from . import auth
 from .config import settings
 from .db import pools
 from . import appkeys, backup
+from . import redis_control, redis_core
 from .routers import backup as backup_routes
-from .routers import data_api, keys, rows, server, sql, tables
+from .routers import data_api, keys, redis_admin, redis_api, rows, server, sql, tables
 
 log = logging.getLogger("central-postgres")
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -80,6 +82,7 @@ async def lifespan(app: FastAPI):
             t.cancel()
             with suppress(asyncio.CancelledError):
                 await t
+    await redis_core.close()
     await appkeys.flush_usage()
     await appkeys.close_all_key_pools()
     await pools.close_all()
@@ -111,6 +114,22 @@ async def pg_error(request: Request, exc: asyncpg.PostgresError):
 @app.exception_handler(asyncpg.InterfaceError)
 async def pg_interface_error(request: Request, exc: asyncpg.InterfaceError):
     return JSONResponse({"detail": f"Database driver error: {exc}"}, status_code=500)
+
+
+try:
+    from redis.exceptions import ConnectionError as RedisConnectionError
+    from redis.exceptions import RedisError, ResponseError
+    from redis.exceptions import TimeoutError as RedisTimeoutError
+
+    @app.exception_handler(RedisError)
+    async def redis_error(request: Request, exc: RedisError):
+        if isinstance(exc, (RedisConnectionError, RedisTimeoutError)):
+            return JSONResponse({"detail": f"Cannot reach Redis: {exc}"}, status_code=503)
+        if isinstance(exc, ResponseError):  # e.g. WRONGTYPE: an operation on a key of another type
+            return JSONResponse({"detail": str(exc)}, status_code=409)
+        return JSONResponse({"detail": f"Redis error: {exc}"}, status_code=500)
+except ImportError:  # pragma: no cover
+    pass
 
 
 @app.exception_handler(OSError)
@@ -161,6 +180,30 @@ class SelectiveGZip:
 
 app.add_middleware(SelectiveGZip)
 
+
+@app.middleware("http")
+async def redis_metrics(request: Request, call_next):
+    """Counts every Central Redis API call (/redis/{project}/{operation}/…) into
+    hourly per-project metrics, and stamps the key's last use."""
+    path = request.url.path
+    if not path.startswith("/redis/"):
+        return await call_next(request)
+    parts = path.split("/")
+    if len(parts) < 4 or not parts[2] or not parts[3]:
+        return await call_next(request)
+    project_id, operation = parts[2], parts[3]
+    started = time.perf_counter()
+    response = await call_next(request)
+    if getattr(request.state, "redis_project", None) == project_id:  # only authenticated calls
+        await redis_core.record(
+            project_id, operation=operation, method=request.method, path=path[len("/redis/") + len(project_id):],
+            status=response.status_code, duration_ms=(time.perf_counter() - started) * 1000,
+            error=getattr(request.state, "redis_error", None))
+        key_id = getattr(request.state, "redis_key_id", None)
+        if key_id and response.status_code < 500:
+            await redis_control.touch_key(key_id)
+    return response
+
 app.include_router(auth.router)
 app.include_router(server.router)
 app.include_router(tables.router)
@@ -170,6 +213,8 @@ app.include_router(sql.router)
 app.include_router(keys.router)
 app.include_router(data_api.router)
 app.include_router(backup_routes.router)
+app.include_router(redis_admin.router)
+app.include_router(redis_api.router)
 
 
 @app.get("/healthz", include_in_schema=False)
@@ -185,6 +230,7 @@ async def healthz():
 
 @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
 @app.api_route("/v1/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
+@app.api_route("/redis/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
 async def api_404(rest: str):
     raise HTTPException(404, "Not found")
 

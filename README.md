@@ -127,7 +127,53 @@ Search with **⌘K / Ctrl K** to jump to any table, database or page. The theme 
 - **Connection guide** — copyable host/port/database, and step-by-step setups for Docker-network apps, the HTTP data API, DBeaver over SSH and Tailscale.
 - **Roles & permissions** — create roles, reset passwords, toggle LOGIN/CREATEDB/CREATEROLE, connection limits, and **Grant access**: read / write / full / revoke on every table in a schema, including tables created later.
 
-## 5. Backup & restore (moving to a new server)
+## 5. Central Redis (merged in)
+
+The old standalone `central_redis` service now lives here: same isolated
+namespaces, same `sk_live_` keys, same endpoints and responses. It runs against
+the `central-redis` container (`redis:7-alpine`), and the panel's **Redis
+projects** page replaces the old dashboard. Only panel users (password or the
+Google allowlist) can manage it; public sign-up is gone.
+
+**Base URL changed** — clients add `/redis` in front of the project:
+
+```
+before:  https://<old-host>/{project_id}/set/{key}
+now:     https://postgres.mohammadramiz.in/redis/{project_id}/set/{key}
+```
+
+```bash
+curl -X POST https://postgres.mohammadramiz.in/redis/checkout_svc/set/cart:42 \
+  -H "x-api-key: $CENTRAL_REDIS_KEY" -H "Content-Type: application/json" \
+  -d '{"value": {"items": 3}, "ttl": 3600}'
+```
+
+All endpoints: `get set delete expire ttl incr mset mget lpush rpush lrange lpop
+rpop hset hget hgetall hdel sadd smembers srem keys scan flush`
+(`x-api-key` header, or `Authorization: Bearer sk_live_…`).
+
+**Switching over:**
+
+1. Put both containers on one network, once, on the VPS:
+   `docker network connect proxy_network central-redis`
+2. In `.env`: `REDIS_URL=redis://central-redis:6379/0` (add `:PASSWORD@` if Redis has one). Redeploy.
+3. Panel → **Redis projects → Import from MongoDB**, paste the old `MONGODB_URI`.
+   Projects and key digests are copied into Postgres (`central_postgres.redis_projects`
+   / `redis_api_keys`), so **existing keys keep working** — only the base URL changes.
+   If the old service ran against a different Redis, copy its data into `central-redis`
+   first (e.g. `redis-cli --rdb` / `MIGRATE`), since keys are not part of the import.
+4. Update each client's base URL, check traffic on the project's **Usage** tab, then
+   shut down the old app and MongoDB.
+
+Per project: **Browser** (SCAN-based key list, type-aware editor, TTLs),
+**Console** (any operation, run exactly like the public API), **API keys**
+(create, rotate, revoke; max 10, shown once, SHA-256 stored), **Usage**
+(requests, errors, latency percentiles, top keys, recent requests — hourly
+counters in Redis under `_m:`, kept 35 days) and **Settings** (default TTL,
+flush, delete). Projects and keys are in Postgres, so full-server backups
+include them; the Redis data itself is persisted by Redis (RDB/AOF).
+
+## 6. Backup & restore (moving to a new server)
 
 **Backup & restore** in the panel makes a *full server backup*: one `.tar` file containing:
 
@@ -159,7 +205,7 @@ Notes:
 - **Versions**: restore into the same or a newer PostgreSQL major version. Set the `PG_MAJOR` build arg to at least the server's version.
 - A full backup contains **all your data and password hashes**. Treat the file like a secret.
 
-## 6. Connecting from outside the server
+## 7. Connecting from outside the server
 
 There are three ways in. Pick per client:
 
@@ -270,7 +316,7 @@ psql postgresql://saathi:PASSWORD@localhost:15432/saathi
 
 Docker-published ports **bypass ufw**, so filtering has to go in the `DOCKER-USER` iptables chain, not ufw.
 
-## 7. Admin API (full control)
+## 8. Admin API (full control)
 
 Admin keys from `API_KEYS` in `.env` can do everything the panel can (create databases, roles, run any SQL). Use them for your own scripts and automation, never in apps. Send `X-API-Key: <one of API_KEYS>` (or `Authorization: Bearer <key>`). Full list at `/api/docs` (click **Authorize**).
 
@@ -310,7 +356,7 @@ For heavy app traffic, connect your services **directly** to Postgres (container
 
 Row values in list responses are returned as text (exactly as Postgres prints them) so nothing is lost for numeric, json, arrays, timestamps, etc. When writing, send strings, numbers, booleans, JSON objects or arrays and Postgres casts them to the column's type.
 
-## 8. Security notes
+## 9. Security notes
 
 - App keys (`cpk_…`) are scoped. Each runs as its own restricted Postgres role in one database. Admin keys (`API_KEYS`) and the panel login give **full control** of the database, including the SQL console. Use a long `ADMIN_PASSWORD`, keep `API_KEYS` secret, and serve over HTTPS.
 - Login is rate-limited (10 failures / 10 min / IP). Sessions are signed, `HttpOnly`, `SameSite=Lax` cookies; cookie-authenticated writes also require a custom header (CSRF guard).
@@ -318,7 +364,7 @@ Row values in list responses are returned as text (exactly as Postgres prints th
 - `postgres`, `template0/1`, the database in `DATABASE_URL` and anything in `PROTECTED_DATABASES` can't be dropped or renamed from the panel.
 - The panel connects as the user in `DATABASE_URL`. On Render that user is not a superuser — the Overview page shows which rights it has (createdb / createrole). Actions it lacks will show Postgres's permission error.
 
-## 9. Render specifics
+## 10. Render specifics
 
 - Render plans cap connections. The panel opens a small pool (`POOL_MAX`, default 5) per database you browse, and idle connections close after 2 minutes.
 - Use the **internal** URL when the panel runs on Render (same region), the **external** URL otherwise; SSL is set automatically (`DB_SSL=auto`).
