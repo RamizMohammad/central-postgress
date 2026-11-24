@@ -72,6 +72,7 @@ const ICONS = {
   terminal: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   folder: '<path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   book: '<path d="M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z"/><path d="M20 4h-6a3 3 0 0 0-3 3"/><path d="M20 4v14h-7"/>',
 };
 const GOOGLE_G = '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.5z"/></svg>';
@@ -330,6 +331,7 @@ function parseRoute() {
   if (parts[0] === 'db' && parts[1]) {
     const db = parts[1];
     if (parts[2] === 'sql') return { page: 'sql', db };
+    if (parts[2] === 'access') return { page: 'access', db };
     if (parts[2] === 't' && parts[3] && parts[4]) return { page: 'table', db, schema: parts[3], table: parts[4], tab: parts[5] || 'data' };
     return { page: 'db', db };
   }
@@ -346,6 +348,7 @@ const link = {
   redisProject: (id, tab = 'browser') => `#/redis/p/${enc(id)}/${tab}`,
   db: (db) => `#/db/${enc(db)}`,
   sql: (db) => `#/db/${enc(db)}/sql`,
+  access: (db) => `#/db/${enc(db)}/access`,
   table: (db, s, t, tab = 'data') => `#/db/${enc(db)}/t/${enc(s)}/${enc(t)}/${tab}`,
 };
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
@@ -529,7 +532,7 @@ function renderSidebar() {
       h('nav', { class: 'nav' },
         h('div', { class: 'nav-label' }, 'Workspace'),
         navItem(link.overview(), 'home', 'Overview', 'overview'),
-        navItem(link.databases(), 'db', 'Databases', 'databases,db'),
+        navItem(link.databases(), 'db', 'Databases', 'databases,db,access'),
         navItem(link.sql(state.db), 'terminal', 'SQL console', 'sql'),
         h('div', { class: 'nav-label' }, 'Access'),
         navItem(link.roles(), 'users', 'Roles & permissions', 'roles'),
@@ -633,7 +636,7 @@ async function route() {
   }
   if (seq !== renderSeq) return;
   renderSidebar();
-  const views = { overview: viewOverview, databases: viewDatabases, roles: viewRoles, keys: viewKeys, backups: viewBackups, connect: viewConnect, redis: viewRedis, redisProject: viewRedisProject, db: viewDb, sql: viewSql, table: viewTable };
+  const views = { overview: viewOverview, databases: viewDatabases, roles: viewRoles, keys: viewKeys, backups: viewBackups, connect: viewConnect, redis: viewRedis, redisProject: viewRedisProject, access: viewAccess, db: viewDb, sql: viewSql, table: viewTable };
   try {
     await views[r.page](r, seq);
   } catch (e) {
@@ -884,18 +887,24 @@ async function editDatabaseModal(d) {
   const name = h('input', { class: 'input mono', value: d.name, disabled: d.protected });
   const owner = select(roles.map(r => r.name), d.owner);
   const comment = h('input', { class: 'input', value: d.comment || '' });
+  const transfer = checkbox('Also make the new owner own every table, view, sequence, function and schema in it (needed for migrations)', true);
   const res = await modal({
     title: `Edit ${d.name}`,
     drawer: true,
-    body: [field('Name', name, d.protected ? 'protected' : 'renaming disconnects everyone'), field('Owner', owner), field('Comment', comment)],
+    body: [field('Name', name, d.protected ? 'protected' : 'renaming disconnects everyone'), field('Owner', owner), transfer, field('Comment', comment)],
     actions: [{ label: 'Cancel' }, {
       label: 'Save', primary: true, onClick: () => PATCH(`/api/databases/${enc(d.name)}`, {
         new_name: name.value.trim() !== d.name ? name.value.trim() : null,
         owner: owner.value !== d.owner ? owner.value : null,
+        transfer_objects: transfer.input.checked,
         comment: comment.value !== (d.comment || '') ? comment.value : null,
       }),
     }],
   });
+  if (res && res.transferred) {
+    const t = res.transferred;
+    toast(`${t.changed} object(s) now owned by ${t.target}` + (t.failed.length ? ` · ${t.failed.length} failed` : ''), t.failed.length ? 'error' : 'ok');
+  }
   if (res) { toast('Saved'); if (state.db === d.name && res.name !== d.name) { state.db = res.name; store.set('db', res.name); } route(); }
 }
 
@@ -955,6 +964,7 @@ async function viewRoles(r, seq) {
           h('td', { class: 'muted' }, (ro.member_of || []).join(', ') || '—'),
           h('td', null, (ro.owns_databases || []).filter(x => !x.startsWith('template')).map((d, i) => [i ? ', ' : '', h('a', { href: link.db(d) }, d)])),
           h('td', { class: 'actions' },
+            btn('Access', () => roleAccessDrawer(ro.name), { class: 'sm', icon: 'eye' }),
             btn('Grant access', () => grantModal(ro.name), { class: 'sm', icon: 'shield' }),
             ro.login && btn('Reset password', () => resetPassword(ro.name), { class: 'sm', icon: 'key' }),
             btn('Edit', () => editRoleModal(ro), { class: 'sm' }),
@@ -1037,27 +1047,308 @@ async function dropRole(ro) {
   try { await DEL(`/api/roles/${enc(ro.name)}`); toast(`Dropped ${ro.name}`); route(); } catch (e) { toastErr(e, 'Could not drop role'); }
 }
 
-async function grantModal(role) {
-  const dbSel = select(state.dbs.filter(d => d.can_connect).map(d => d.name), state.db);
-  const schemaSel = select(['public'], 'public');
+const GRANT_LEVELS = [
+  ['read', 'Read only — SELECT'],
+  ['write', 'Read & write — SELECT, INSERT, UPDATE, DELETE'],
+  ['all', 'Full — all privileges + create tables in the schema'],
+  ['custom', 'Custom — pick privileges, tables and options'],
+  ['owner', 'Owner — owns the database and every object (needed to run migrations)'],
+  ['none', 'Revoke all'],
+];
+const TABLE_PRIVS = [
+  ['SELECT', 'read rows'], ['INSERT', 'add rows'], ['UPDATE', 'change rows'], ['DELETE', 'remove rows'],
+  ['TRUNCATE', 'empty tables'], ['REFERENCES', 'create foreign keys to them'], ['TRIGGER', 'create triggers'],
+];
+const PRIV_PRESETS = { read: ['SELECT'], write: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'], all: TABLE_PRIVS.map(p => p[0]) };
+
+async function grantModal(role, preset = {}) {
+  const dbSel = select(state.dbs.filter(d => d.can_connect).map(d => d.name), preset.db || state.db);
+  const schemaSel = select([preset.schema || 'public'], preset.schema || 'public');
+  const level = select(GRANT_LEVELS, preset.level || 'read');
+  let touched = !!preset.level;
+  level.addEventListener('change', () => { touched = true; });
+
+  // ---- custom options
+  const privBoxes = TABLE_PRIVS.map(([p, hint]) => { const c = checkbox(h('span', null, h('span', { class: 'mono' }, p), h('span', { class: 'faint' }, ' · ' + hint)), p === 'SELECT'); c.priv = p; return c; });
+  const presetBtns = h('div', { class: 'row', style: { gap: '6px' } }, h('span', { class: 'faint small' }, 'Quick pick:'),
+    ...Object.entries(PRIV_PRESETS).map(([k, list]) => btn({ read: 'Read', write: 'Read & write', all: 'All' }[k], () => privBoxes.forEach(c => { c.input.checked = list.includes(c.priv); }), { class: 'sm' })),
+    btn('None', () => privBoxes.forEach(c => { c.input.checked = false; }), { class: 'sm ghost' }));
+  const scopeAll = h('input', { type: 'radio', name: 'gscope', checked: true });
+  const scopeSome = h('input', { type: 'radio', name: 'gscope' });
+  const tableFilter = h('input', { class: 'input sm', placeholder: 'Filter tables' });
+  const tableList = h('div', { class: 'history', style: { maxHeight: '200px', padding: '4px 0' } });
+  let tableBoxes = [];
+  const drawTables = () => {
+    const f = tableFilter.value.toLowerCase();
+    tableBoxes.forEach(c => { c.style.display = !f || c.table.toLowerCase().includes(f) ? '' : 'none'; });
+  };
+  tableFilter.addEventListener('input', drawTables);
+  const loadTables = async () => {
+    clear(tableList).appendChild(h('div', { class: 'faint small', style: { padding: '6px 12px' } }, 'Loading…'));
+    try {
+      const ts = await GET(`/api/db/${enc(dbSel.value)}/tables${qs({ schema: schemaSel.value })}`);
+      tableBoxes = ts.map(t => { const c = checkbox(h('span', { class: 'mono' }, t.name, t.kind === 'v' || t.kind === 'm' ? h('span', { class: 'faint' }, ' (view)') : ''), false); c.table = t.name; c.style.display = 'flex'; c.style.padding = '4px 12px'; return c; });
+      clear(tableList);
+      if (!tableBoxes.length) tableList.appendChild(h('div', { class: 'faint small', style: { padding: '6px 12px' } }, 'No tables in this schema.'));
+      append(tableList, tableBoxes);
+      drawTables();
+    } catch (e) { clear(tableList).appendChild(h('div', { class: 'faint small', style: { padding: '6px 12px' } }, e.message)); }
+  };
+  const tablePick = h('div', { class: 'stack', style: { gap: '6px' } },
+    h('div', { class: 'row', style: { gap: '6px' } }, tableFilter,
+      btn('All', () => tableBoxes.forEach(c => { if (c.style.display !== 'none') c.input.checked = true; }), { class: 'sm' }),
+      btn('None', () => tableBoxes.forEach(c => { c.input.checked = false; }), { class: 'sm ghost' })),
+    tableList);
+  const syncScope = () => { tablePick.style.display = scopeSome.checked ? '' : 'none'; future.style.opacity = scopeSome.checked ? '.45' : ''; future.input.disabled = scopeSome.checked; };
+  scopeAll.addEventListener('change', syncScope); scopeSome.addEventListener('change', syncScope);
+  const sequences = checkbox('Sequences too (needed to INSERT into serial / identity columns)', true);
+  const functions = checkbox('EXECUTE on all functions in the schema');
+  const schemaCreate = checkbox('CREATE on the schema (can make its own tables, views, functions)');
+  const temp = checkbox('TEMPORARY on the database (temp tables)');
+  const future = checkbox('Apply to tables created later (default privileges, incl. tables from migrations)', true);
+  const grantOpt = checkbox('WITH GRANT OPTION (may pass these privileges on to other roles)');
+  const custom = h('div', { class: 'stack', style: { gap: '12px', padding: '14px', border: '1px solid var(--border)', borderRadius: 'var(--radius)' } },
+    h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'k small', style: { fontWeight: 600 } }, 'Table privileges'), presetBtns, ...privBoxes),
+    h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'k small', style: { fontWeight: 600 } }, 'Applies to'),
+      h('label', { class: 'check' }, scopeAll, 'All tables in the schema'),
+      h('label', { class: 'check' }, scopeSome, 'Only selected tables'), tablePick),
+    h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'k small', style: { fontWeight: 600 } }, 'Options'), sequences, functions, schemaCreate, temp, future, grantOpt));
+  syncScope();
+
+  // ---- current access, read live from Postgres
+  const current = h('div', { class: 'kv', style: { border: '1px solid var(--border)', borderRadius: 'var(--radius)' } });
+  const loadCurrent = async () => {
+    clear(current).appendChild(h('div', null, h('div', { class: 'k' }, 'Current access'), h('span', { class: 'spinner' })));
+    try {
+      const a = await GET(`/api/db/${enc(dbSel.value)}/access${qs({ role })}`);
+      const ro = a.roles[0];
+      if (!ro) { clear(current); return; }
+      const sch = ro.schemas[schemaSel.value];
+      let lvl, label;
+      if (ro.superuser) { lvl = null; label = 'Superuser — bypasses every permission check'; }
+      else if (ro.is_owner && ro.can_migrate) { lvl = 'owner'; label = `Owner of ${dbSel.value} and all ${ro.tables_total} table(s) — can run migrations`; }
+      else if (!sch || ['none', 'usage'].includes(sch.level)) { lvl = 'none'; label = ro.is_owner ? 'Owns the database but none of the tables here' : 'No access in this schema'; }
+      else {
+        lvl = { owner: 'all', all: 'all', write: 'write', read: 'read', partial: 'custom' }[sch.level] || null;
+        label = (LEVEL_UI[sch.level] || [sch.level])[0] + ` — ${sch.can_select} readable · ${sch.can_write} writable · ${sch.owned} owned of ${sch.tables} table(s)`;
+      }
+      clear(current);
+      append(current, [
+        h('div', null, h('div', { class: 'k' }, 'Current access', h('small', null, label)),
+          ro.superuser ? h('span', { class: 'badge warn' }, 'superuser') : lvl === 'owner' ? h('span', { class: 'badge accent' }, 'owner') : levelBadge(sch, false)),
+        h('div', null, h('div', { class: 'k' }, 'Can run migrations'), migrateBadge(ro)),
+        ro.defaults.length ? h('div', null, h('div', { class: 'k' }, 'Future tables'), defaultsSummary(ro.defaults)) : null,
+      ]);
+      if (!touched && lvl && lvl !== 'none') { level.value = lvl; syncLevel(); }
+    } catch (e) { clear(current).appendChild(h('div', null, h('div', { class: 'k' }, 'Current access'), h('span', { class: 'faint' }, e.message))); }
+  };
+
   const loadSchemas = async () => {
     try {
       const ss = await GET(`/api/db/${enc(dbSel.value)}/schemas`);
-      clear(schemaSel); append(schemaSel, ss.map(s => h('option', { value: s.name }, s.name)));
+      const keep = schemaSel.value;
+      clear(schemaSel); append(schemaSel, ss.map(x => h('option', { value: x.name }, x.name)));
+      if (ss.some(x => x.name === keep)) schemaSel.value = keep;
     } catch (e) { toastErr(e); }
   };
-  dbSel.addEventListener('change', loadSchemas); loadSchemas();
-  const level = select([['read', 'Read only (SELECT)'], ['write', 'Read & write (SELECT, INSERT, UPDATE, DELETE)'], ['all', 'Full (all privileges + create tables)'], ['none', 'Revoke all']], 'read');
+  dbSel.addEventListener('change', async () => { await loadSchemas(); loadCurrent(); loadTables(); });
+  schemaSel.addEventListener('change', () => { loadCurrent(); loadTables(); });
+
+  const help = h('div', { class: 'callout info' });
+  const syncLevel = () => {
+    const l = level.value;
+    help.textContent = l === 'owner'
+      ? `Makes ${role} the owner of ${dbSel.value} and transfers every table, view, sequence, function and schema in it to ${role}. Use this for an app's own login: Postgres only lets an object's owner ALTER or DROP it, so migrations need it.`
+      : l === 'none' ? `Removes ${role}'s table, sequence and schema privileges in this schema, its future-table defaults, and its explicit CONNECT on the database.`
+        : l === 'custom' ? `Replaces ${role}'s privileges on the chosen tables with exactly what's ticked. Use Preview SQL to see every statement first.`
+          : `Applies to every existing table and sequence in the schema, and to tables created later — by the panel or by the database owner (e.g. the app's migrations). Changing the level replaces the previous one.`;
+    schemaSel.disabled = l === 'owner';
+    custom.style.display = l === 'custom' ? '' : 'none';
+    if (l === 'custom' && PRIV_PRESETS[preset.from || '']) privBoxes.forEach(c => { c.input.checked = PRIV_PRESETS[preset.from].includes(c.priv); });
+  };
+  level.addEventListener('change', syncLevel);
+  syncLevel();
+  loadSchemas().then(() => { loadCurrent(); loadTables(); });
+
+  const payload = (dry) => {
+    const p = { role, level: level.value, schema: schemaSel.value, dry_run: dry };
+    if (level.value === 'custom') {
+      Object.assign(p, {
+        privileges: privBoxes.filter(c => c.input.checked).map(c => c.priv),
+        tables: scopeSome.checked ? tableBoxes.filter(c => c.input.checked).map(c => c.table) : null,
+        sequences: sequences.input.checked, functions: functions.input.checked, schema_create: schemaCreate.input.checked,
+        temp: temp.input.checked, future: future.input.checked, grant_option: grantOpt.input.checked,
+      });
+    }
+    return p;
+  };
   const res = await modal({
-    title: `Grant access to ${role}`,
+    title: `Access for ${role}`,
     drawer: true,
-    body: [h('div', { class: 'grid2' }, field('Database', dbSel), field('Schema', schemaSel)), field('Access level', level)],
-    actions: [{ label: 'Cancel' }, { label: 'Apply', primary: true, onClick: () => POST(`/api/db/${enc(dbSel.value)}/grant`, { role, level: level.value, schema: schemaSel.value }) }],
+    body: [h('div', { class: 'grid2' }, field('Database', dbSel), field('Schema', schemaSel)), current, field('Change to', level), custom, help],
+    actions: [
+      { label: 'Preview SQL', left: true, onClick: async () => {
+        const r = await POST(`/api/db/${enc(dbSel.value)}/grant`, payload(true));
+        await modal({ title: `SQL for ${role} (not run yet)`, size: 'mid',
+          body: [h('pre', { class: 'code', style: { maxHeight: '60vh' } }, r.statements.length ? r.statements.join(';\n') + ';' : '-- nothing to change')],
+          actions: [{ label: 'Copy', onClick: () => { copyText(r.statements.join(';\n') + ';'); return false; } }, { label: 'Close', primary: true }] });
+        return false;  // keep the access form open
+      } },
+      { label: 'Cancel' },
+      { label: 'Apply', primary: true, onClick: () => POST(`/api/db/${enc(dbSel.value)}/grant`, payload(false)) },
+    ],
   });
-  if (res) {
-    toast(`Updated access for ${role}`);
-    await modal({ title: 'Statements executed', size: 'mid', body: h('pre', { class: 'code' }, res.statements.join(';\n') + ';'), actions: [{ label: 'Close', primary: true }] });
-  }
+  if (!res) return null;
+  toast(res.failed && res.failed.length ? `Updated with ${res.failed.length} error(s)` : `Updated access for ${role}`, res.failed && res.failed.length ? 'error' : 'ok');
+  if (res.note) toast(res.note, 'ok', 'Note');
+  await loadDatabases().catch(() => {});
+  route();  // every page re-reads privileges from Postgres, so the change shows right away
+  return res;
+}
+
+async function transferOwnership(db, own) {
+  const ok = await confirmDanger({
+    title: `Transfer ${own.mismatched} object(s) to ${own.database_owner}?`,
+    message: `Every table, view, sequence, function, type and schema in ${db} not owned by ${own.database_owner} gets ALTER … OWNER TO ${own.database_owner}. Grants other roles have are kept. Nothing outside ${db} changes.`,
+    confirmLabel: 'Transfer ownership',
+  });
+  if (!ok) return;
+  try {
+    const res = await POST(`/api/db/${enc(db)}/ownership`, {});
+    toast(`${res.changed} object(s) now owned by ${res.target}` + (res.remaining ? ` · ${res.remaining} still mismatched` : ''), res.failed.length ? 'error' : 'ok');
+    if (res.failed.length) await modal({ title: 'Some objects could not be transferred', size: 'mid', body: h('pre', { class: 'code' }, res.failed.map(f => `${f.sql}\n  -> ${f.error}`).join('\n\n')), actions: [{ label: 'Close', primary: true }] });
+    route();
+  } catch (e) { toastErr(e, 'Transfer failed'); }
+}
+
+// ============================================================ access & ownership
+const LEVEL_UI = {
+  superuser: ['superuser', 'warn', 'Superuser: bypasses every permission check'],
+  owner: ['owner', 'accent', 'Owns every table here: can read, write and migrate (ALTER/DROP)'],
+  all: ['full', 'ok', 'All privileges on every table, can create tables'],
+  write: ['read/write', 'ok', 'SELECT, INSERT, UPDATE, DELETE on every table'],
+  read: ['read', '', 'SELECT on every table'],
+  partial: ['partial', 'warn', 'Privileges on some tables only'],
+  blocked: ['no USAGE', 'danger', 'Has table privileges but no USAGE on the schema, so it can\'t reach them'],
+  usage: ['—', '', 'Can see the schema, no table privileges'],
+  none: ['—', '', 'No access'],
+};
+function levelBadge(s, superuser) {
+  if (superuser) return h('span', { class: 'badge warn', title: LEVEL_UI.superuser[2] }, 'superuser');
+  if (!s) return h('span', { class: 'faint' }, '—');
+  const [label, cls, tip] = LEVEL_UI[s.level] || [s.level, '', ''];
+  const detail = s.tables ? `\n${s.owned}/${s.tables} owned · ${s.can_select} readable · ${s.can_write} writable` : '';
+  return label === '—' ? h('span', { class: 'faint', title: tip }, '—') : h('span', { class: 'badge ' + cls, title: tip + detail }, label);
+}
+function migrateBadge(ro) {
+  if (ro.superuser) return h('span', { class: 'badge warn' }, 'yes (superuser)');
+  if (ro.can_migrate) return h('span', { class: 'badge ok' }, 'yes');
+  const others = ro.tables_total - ro.tables_owned;
+  return h('span', { class: 'badge danger', title: 'Postgres only lets the owner ALTER/DROP a table' }, others > 0 ? `no · ${others} not owned` : 'no');
+}
+function defaultsSummary(list) {
+  if (!list || !list.length) return h('span', { class: 'faint' }, 'none');
+  return h('div', { class: 'small' }, list.map(d => h('div', { class: 'nowrap' }, h('span', { class: 'mono' }, d.privileges.length > 28 ? 'ALL' : d.privileges), ' on ', d.objects,
+    d.schema ? [' in ', h('code', null, d.schema)] : '', h('span', { class: 'faint' }, ' by ' + d.creator))));
+}
+
+async function viewAccess(r, seq) {
+  const crumbs = [['Databases', link.databases()], [r.db, link.db(r.db)]];
+  setMain({ title: 'Access & ownership', crumbs, loading: true });
+  const [a, allRoles] = await Promise.all([GET(`/api/db/${enc(r.db)}/access`), GET('/api/roles').catch(() => [])]);
+  if (seq !== renderSeq) return;
+  const o = a.ownership;
+  const dbInfo = state.dbs.find(d => d.name === r.db) || { name: r.db, owner: a.owner };
+  const schemas = a.schemas;
+
+  let objectsBox = null;
+  const ownSection = h('div', { class: 'section' },
+    h('div', { class: 'section-head' }, h('h3', null, 'Ownership'),
+      h('div', { class: 'desc' }, 'Postgres only lets an object\'s owner ALTER or DROP it, whatever is granted. Everything in a database should belong to the database owner, the role its app (and migrations) connect as.'),
+      h('div', { class: 'actions' }, btn('Change database owner', () => editDatabaseModal(dbInfo), { class: 'sm', icon: 'edit' }))),
+    h('div', { class: 'kv' },
+      h('div', null, h('div', { class: 'k' }, 'Database owner'), h('span', { class: 'v' }, a.owner)),
+      h('div', null, h('div', { class: 'k' }, 'Panel login', h('small', null, a.panel_is_superuser ? 'superuser, so it can manage everything' : 'not a superuser: some actions need it to be a member of the owner role')), h('span', { class: 'v' }, a.panel_role)),
+      h('div', null, h('span', { class: 'dot ' + (o.mismatched ? 'danger' : '') }),
+        h('div', { class: 'k' }, o.mismatched ? `${o.mismatched} object(s) not owned by ${o.target}` : `Every object is owned by ${o.target}`,
+          o.mismatched ? h('small', null, Object.entries(o.by_owner).map(([who, n]) => `${n} owned by ${who}`).join(' · ')) : h('small', null, 'Migrations run as the owner will work.')),
+        o.mismatched ? [btn('Show objects', async (ev) => {
+          if (objectsBox) { objectsBox.remove(); objectsBox = null; return; }
+          const list = await GET(`/api/db/${enc(r.db)}/ownership`);
+          objectsBox = h('div', { class: 'scroll-x', style: { maxHeight: '320px', overflow: 'auto', borderTop: '1px solid var(--border)' } }, h('table', { class: 'list' },
+            h('thead', null, h('tr', null, ['Kind', 'Object', 'Owner', 'Fix'].map(x => h('th', null, x)))),
+            h('tbody', null, list.objects.map(x => h('tr', null, h('td', null, h('span', { class: 'badge' }, x.kind)), h('td', { class: 'mono' }, x.kind === 'schema' ? x.name : `${x.schema}.${x.name}`),
+              h('td', { class: 'muted' }, x.owner), h('td', { class: 'mono faint small' }, x.sql))))));
+          ownSection.appendChild(objectsBox);
+          void ev;
+        }, { class: 'sm' }), btn(`Transfer all to ${o.target}`, () => transferOwnership(r.db, { mismatched: o.mismatched, database_owner: o.target }), { class: 'sm primary' })] :
+          h('span', { class: 'badge ok' }, 'healthy'))));
+
+  const rolePick = select(allRoles.filter(x => !x.superuser).map(x => x.name), null, { class: 'input sm', style: { width: '200px' } });
+  const rolesSection = h('div', { class: 'section' },
+    h('div', { class: 'section-head' }, h('h3', null, 'Who can do what'), h('span', { class: 'count' }, a.roles.length),
+      h('div', { class: 'desc' }, 'Effective privileges, read live from Postgres on every load (including changes made outside the panel). Hover a badge for table counts.'),
+      h('div', { class: 'actions' }, rolePick, btn('Grant access', () => rolePick.value && grantModal(rolePick.value, { db: r.db }), { class: 'sm primary', icon: 'shield' }))),
+    h('div', { class: 'scroll-x' }, h('table', { class: 'list' },
+      h('thead', null, h('tr', null, h('th', null, 'Role'), h('th', null, 'Database'), schemas.map(s => h('th', null, 'schema ', h('span', { class: 'mono', style: { textTransform: 'none' } }, s.name))),
+        h('th', null, 'Can migrate'), h('th', null, 'Future tables'), h('th', null, ''))),
+      h('tbody', null, a.roles.map(ro => h('tr', null,
+        h('td', null, h('div', { class: 'name-cell' }, h('span', { class: 'mono' }, ro.role),
+          ro.is_owner && h('span', { class: 'badge accent' }, 'db owner'), !ro.login && h('span', { class: 'badge' }, 'group'),
+          ro.role === a.panel_role && h('span', { class: 'badge' }, 'panel'))),
+        h('td', null, h('span', { class: 'badges' },
+          ro.superuser || ro.is_owner ? h('span', { class: 'badge' }, 'all') : [ro.connect ? h('span', { class: 'badge ok', title: ro.explicit_grant ? 'granted explicitly' : 'via PUBLIC' }, 'connect') : h('span', { class: 'badge danger' }, 'no connect'),
+            ro.create && h('span', { class: 'badge' }, 'create')])),
+        schemas.map(s => h('td', null, levelBadge(ro.schemas[s.name], ro.superuser))),
+        h('td', null, migrateBadge(ro)),
+        h('td', null, ro.superuser ? h('span', { class: 'faint' }, 'n/a') : defaultsSummary(ro.defaults)),
+        h('td', { class: 'actions' }, !ro.superuser && [
+          btn('Change', () => grantModal(ro.role, { db: r.db, schema: schemas[0] && schemas[0].name }), { class: 'sm' }),
+          !ro.is_owner && ro.login && btn('Make owner', () => grantModal(ro.role, { db: r.db, level: 'owner' }), { class: 'sm' })])))))),
+    !a.roles.length && h('div', { class: 'empty' }, 'Only superusers can access this database.'));
+
+  const schemaSection = h('div', { class: 'section' },
+    h('div', { class: 'section-head' }, h('h3', null, 'Schemas')),
+    h('table', { class: 'list' }, h('thead', null, h('tr', null, ['Schema', 'Owner', 'Tables', 'Ownership'].map(x => h('th', null, x)))),
+      h('tbody', null, schemas.map(s => h('tr', null, h('td', { class: 'mono' }, s.name), h('td', { class: 'muted' }, s.owner), h('td', null, s.tables),
+        h('td', null, s.mismatched ? h('span', { class: 'badge danger' }, `${s.mismatched} not owned by ${a.owner}`) : h('span', { class: 'badge ok' }, 'ok')))))));
+
+  setMain({
+    title: 'Access & ownership', crumbs,
+    sub: h('span', null, h('span', { class: 'mono' }, r.db), ' · owner ', h('strong', null, a.owner)),
+    badges: o.mismatched ? h('span', { class: 'badge danger' }, `${o.mismatched} ownership issue(s)`) : h('span', { class: 'badge ok' }, 'ownership ok'),
+    actions: [btn('Refresh', () => route(), { icon: 'refresh' }), btn('Open database', () => go(link.db(r.db)), { icon: 'db' })],
+    body: [ownSection, rolesSection, schemaSection],
+  });
+}
+
+async function roleAccessDrawer(role) {
+  const dbSel = select(state.dbs.filter(d => d.can_connect).map(d => d.name), (state.dbs.find(d => d.owner === role) || {}).name || state.db, { class: 'input sm' });
+  const box = h('div', { class: 'stack' }, loadingView());
+  const load = async () => {
+    clear(box).appendChild(loadingView());
+    try {
+      const a = await GET(`/api/db/${enc(dbSel.value)}/access${qs({ role })}`);
+      const ro = a.roles[0];
+      clear(box);
+      if (!ro) { box.appendChild(h('div', { class: 'empty' }, 'Role not found.')); return; }
+      append(box, [
+        h('div', { class: 'kv', style: { border: '1px solid var(--border)', borderRadius: 'var(--radius)' } },
+          h('div', null, h('div', { class: 'k' }, 'Database'), ro.superuser ? h('span', { class: 'badge warn' }, 'superuser') : ro.is_owner ? h('span', { class: 'badge accent' }, 'owner') : ro.connect ? h('span', { class: 'badge ok' }, 'can connect') : h('span', { class: 'badge danger' }, 'cannot connect')),
+          h('div', null, h('div', { class: 'k' }, 'Can run migrations', h('small', null, `${ro.tables_owned} of ${ro.tables_total} tables owned`)), migrateBadge(ro)),
+          a.schemas.map(s => h('div', null, h('div', { class: 'k' }, 'Schema ', h('code', null, s.name), ro.schemas[s.name] && ro.schemas[s.name].tables ? h('small', null, `${ro.schemas[s.name].can_select} readable · ${ro.schemas[s.name].can_write} writable · ${ro.schemas[s.name].owned} owned of ${ro.schemas[s.name].tables}`) : null),
+            levelBadge(ro.schemas[s.name], ro.superuser)))),
+        h('div', null, h('div', { class: 'faint small', style: { marginBottom: '6px' } }, 'Privileges on tables created later'), defaultsSummary(ro.defaults)),
+        !ro.can_migrate && !ro.superuser && ro.is_owner && h('div', { class: 'callout' }, `${role} owns the database but not all of its objects, so ALTER TABLE fails with "must be owner". `,
+          btn('Transfer them to ' + role, () => transferOwnership(dbSel.value, { mismatched: ro.tables_total - ro.tables_owned, database_owner: role }).then(load), { class: 'sm' })),
+        h('div', { class: 'row' }, btn('Change access', () => grantModal(role, { db: dbSel.value }).then(r => r && load()), { class: 'sm primary', icon: 'shield' }),
+          btn('Open access page', () => { document.querySelector('.overlay')?.remove(); go(link.access(dbSel.value)); }, { class: 'sm' })),
+      ]);
+    } catch (e) { clear(box).appendChild(h('div', { class: 'error-box', style: { margin: 0 } }, e instanceof ApiError ? e.full : String(e))); }
+  };
+  dbSel.addEventListener('change', load);
+  load();
+  await modal({ title: `Access for ${role}`, drawer: true, body: [field('Database', dbSel), box], actions: [{ label: 'Close', primary: true }] });
 }
 
 // ============================================================ full-server backup & restore
@@ -2322,7 +2613,8 @@ async function viewConnect(r, seq) {
 // ============================================================ database home
 async function viewDb(r, seq) {
   setMain({ title: r.db, crumbs: [['Databases', link.databases()]], body: null, loading: true });
-  const [schemas, exts] = await Promise.all([GET(`/api/db/${enc(r.db)}/schemas`), GET(`/api/db/${enc(r.db)}/extensions`)]);
+  const [schemas, exts, own] = await Promise.all([GET(`/api/db/${enc(r.db)}/schemas`), GET(`/api/db/${enc(r.db)}/extensions`),
+    GET(`/api/db/${enc(r.db)}/ownership`).catch(() => null), loadDatabases().catch(() => null)]);
   state.schemas = schemas;
   if (seq !== renderSeq) return;
   renderSidebar();
@@ -2372,6 +2664,7 @@ async function viewDb(r, seq) {
     title: r.db,
     crumbs: [['Databases', link.databases()]],
     actions: [
+      btn('Access & ownership', () => go(link.access(r.db)), { icon: 'shield' }),
       btn('SQL console', () => go(link.sql(r.db)), { icon: 'sql' }),
       btn('Backup', () => backupModal(r.db), { icon: 'download' }),
       btn('New table', () => newTableModal(), { class: 'primary', icon: 'plus' }),
@@ -2382,6 +2675,11 @@ async function viewDb(r, seq) {
         h('div', { class: 'card' }, h('div', { class: 'k' }, 'Owner'), h('div', { class: 'v', style: { fontSize: '17px' } }, dbInfo.owner || '—')),
         h('div', { class: 'card' }, h('div', { class: 'k' }, 'Schemas'), h('div', { class: 'v' }, schemas.length)),
         h('div', { class: 'card' }, h('div', { class: 'k' }, 'Connections'), h('div', { class: 'v' }, dbInfo.connections ?? '—'))),
+      own && own.mismatched ? h('div', { class: 'callout', style: { marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' } },
+        h('span', { class: 'grow' }, h('strong', null, `${own.mismatched} object(s) aren't owned by ${own.database_owner}`),
+          ` (${Object.entries(own.by_owner).map(([o, n]) => `${n} by ${o}`).join(', ')}). ${own.database_owner} can't ALTER or DROP them, so its migrations will fail with "must be owner".`),
+        btn(`Transfer all to ${own.database_owner}`, () => transferOwnership(r.db, own), { class: 'sm primary' }),
+        btn('Details', () => go(link.access(r.db)), { class: 'sm' })) : null,
       tablesSection, schemaSection, extSection,
     ],
   });
@@ -3084,6 +3382,11 @@ async function viewSql(r) {
   const results = h('div', { class: 'results' },
     h('div', { class: 'loading' }, h('span', { class: 'faint' }, 'Run a query to see results here. ', h('kbd', null, IS_MAC ? '⌘' : 'Ctrl'), ' ', h('kbd', null, '↵'), ' runs the selection or everything.')));
   const runBtn = btn('Run', () => run(), { class: 'sm primary', icon: 'play', title: (IS_MAC ? '⌘' : 'Ctrl') + ' + Enter' });
+  const dbOwner = (state.dbs.find(d => d.name === db) || {}).owner;
+  const runAs = select([['owner', `as ${dbOwner || 'DB owner'} (owner)`], ['admin', `as ${state.user} (panel)`]], store.get('sqlRunAs:' + db, 'owner'), {
+    class: 'input sm', style: { width: 'auto' }, title: 'Objects you create belong to the role the SQL runs as. Run as the database owner so the app (and its migrations) own them.',
+    onchange: (e) => store.set('sqlRunAs:' + db, e.target.value),
+  });
 
   async function run(prefix = '') {
     const sel = editor.value.substring(editor.selectionStart, editor.selectionEnd);
@@ -3095,11 +3398,15 @@ async function viewSql(r) {
     const hist = store.get('history', []);
     store.set('history', [{ db, sql, at: Date.now() }, ...hist.filter(x => x.sql !== sql)].slice(0, 50));
     try {
-      const res = await POST(`/api/db/${enc(db)}/sql`, { sql, limit: Number(limit.value) });
+      const res = await POST(`/api/db/${enc(db)}/sql`, { sql, limit: Number(limit.value), run_as: runAs.value });
       showResult(res);
       if (/\b(create|drop|alter)\b/i.test(sql)) { refreshTables(); }
     } catch (e) {
       clear(results).appendChild(h('div', { class: 'error-box' }, e instanceof ApiError ? e.full + (e.body.pg_position ? `\nAt character ${e.body.pg_position}` : '') : String(e)));
+      if (runAs.value === 'owner' && /permission denied|must be owner/i.test(String(e.message || e))) {
+        results.appendChild(h('div', { class: 'callout', style: { margin: '0 20px' } }, `This ran as ${dbOwner}. Some objects here aren't owned by it — fix that on `,
+          h('a', { href: link.access(db) }, 'Access & ownership'), ', or switch "Run as" to the panel.'));
+      }
       if (e.body && e.body.pg_position && !sel.trim()) {
         const p = Number(e.body.pg_position) - 1;
         editor.focus(); editor.setSelectionRange(p, Math.min(editor.value.length, p + 1));
@@ -3110,7 +3417,8 @@ async function viewSql(r) {
   function showResult(res) {
     clear(results);
     if (res.kind !== 'rows') {
-      results.appendChild(h('div', { class: 'result-meta' }, h('span', { class: 'ok' }, '✓ ' + (res.status || 'OK')), h('span', null, `${res.duration_ms} ms`)));
+      results.appendChild(h('div', { class: 'result-meta' }, h('span', { class: 'ok' }, '✓ ' + (res.status || 'OK')), h('span', null, `${res.duration_ms} ms`),
+        res.ran_as && h('span', { class: 'badge' }, 'as ' + res.ran_as)));
       return;
     }
     const exportCsv = () => {
@@ -3124,7 +3432,7 @@ async function viewSql(r) {
     results.appendChild(h('div', { class: 'result-meta' },
       h('span', { class: 'ok' }, `✓ ${fmtNum(res.row_count)} row${res.row_count === 1 ? '' : 's'}`),
       res.truncated && h('span', { class: 'badge warn' }, `limited to ${fmtNum(res.row_count)}`),
-      h('span', null, `${res.duration_ms} ms`), h('span', { class: 'grow' }),
+      h('span', null, `${res.duration_ms} ms`), res.ran_as && h('span', { class: 'badge' }, 'as ' + res.ran_as), h('span', { class: 'grow' }),
       res.rows.length ? btn('Export CSV', exportCsv, { class: 'sm', icon: 'download' }) : null));
     const table = h('table', { class: 'grid' },
       h('thead', null, h('tr', null, h('th', null, h('div', { class: 'h' }, h('span', { class: 'n' }, '#'), h('span', { class: 't' }, ' '))),
@@ -3170,7 +3478,7 @@ async function viewSql(r) {
           runBtn,
           btn('Explain analyze', () => run('EXPLAIN (ANALYZE, BUFFERS) '), { class: 'sm', title: 'Runs the query with EXPLAIN ANALYZE — it really executes!' }),
           h('span', { class: 'vsep' }),
-          limit, snippets,
+          limit, runAs, snippets,
           h('span', { class: 'grow' }),
           btn('History', showHistory, { class: 'sm ghost', icon: 'history' }),
           btn('Open .sql', () => fileIn.click(), { class: 'sm ghost', icon: 'file' }), fileIn,

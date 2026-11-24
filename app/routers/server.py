@@ -9,6 +9,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from .. import ownership
 from ..auth import require_auth
 from ..config import settings
 from ..db import pools
@@ -197,6 +198,7 @@ class RenameDatabase(BaseModel):
     new_name: str | None = None
     owner: str | None = None
     comment: str | None = None
+    transfer_objects: bool = True  # with `owner`: also hand every table, view, sequence… to the new owner
 
 
 @router.patch("/databases/{name}")
@@ -204,16 +206,24 @@ async def alter_database(name: str, body: RenameDatabase):
     if name in settings.protected_databases and body.new_name:
         raise HTTPException(400, f"'{name}' is protected and cannot be renamed")
     pool = await pools.get()
+    transferred = None
     async with pool.acquire() as conn:
         if body.owner:
+            try:  # needed on PG < 16 when the panel isn't a superuser
+                await conn.execute(f"GRANT {ident(body.owner)} TO current_user")
+            except asyncpg.PostgresError:
+                pass
             await conn.execute(f"ALTER DATABASE {ident(name)} OWNER TO {ident(body.owner)}")
+            if body.transfer_objects:
+                async with (await pools.get(name)).acquire() as dbconn:
+                    transferred = await ownership.transfer(dbconn, body.owner)
         if body.comment is not None:
             val = literal(body.comment) if body.comment else "NULL"
             await conn.execute(f"COMMENT ON DATABASE {ident(name)} IS {val}")
         if body.new_name and body.new_name != name:
             await pools.close(name)
             await conn.execute(f"ALTER DATABASE {ident(name)} RENAME TO {ident(body.new_name)}")
-    return {"name": body.new_name or name}
+    return {"name": body.new_name or name, "transferred": transferred}
 
 
 @router.delete("/databases/{name}")
@@ -346,44 +356,168 @@ async def drop_role(name: str):
 
 
 # --------------------------------------------------------------------------- privileges
+TABLE_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
+
+
 class GrantBody(BaseModel):
     role: str
-    level: Literal["read", "write", "all", "none"] = "read"
+    level: Literal["read", "write", "all", "none", "owner", "custom"] = "read"
     schema_name: str = Field("public", alias="schema")
+    # --- "custom" only -------------------------------------------------------
+    privileges: list[str] = []            # subset of TABLE_PRIVILEGES
+    tables: list[str] | None = None       # None = every table in the schema (and future ones)
+    sequences: bool = True                # USAGE, SELECT (+ UPDATE when writing) on sequences
+    functions: bool = False               # EXECUTE on all functions in the schema
+    schema_create: bool = False           # CREATE on the schema (can make new tables)
+    temp: bool = False                    # TEMPORARY on the database
+    future: bool = True                   # same privileges on tables created later
+    grant_option: bool = False            # role may pass these privileges on
+    # --- any level -------------------------------------------------------------
+    dry_run: bool = False                 # return the SQL without running it
 
     model_config = {"populate_by_name": True}
 
 
 @router.post("/db/{db}/grant")
 async def grant_access(db: str, body: GrantBody):
-    """Give a role read / write / full access to every table in a schema (now and future)."""
+    """Set a role's access to a schema: preset levels (read / write / all), a
+    custom mix of privileges and tables, revoke, or full ownership. Grants also
+    cover tables created later — by the panel or by the database owner (e.g. an
+    app's migrations). `dry_run` returns the statements without running them."""
+    if body.level == "owner":
+        async with (await pools.get(db)).acquire() as conn:
+            plan = await ownership.audit(conn, body.role)
+        stmts = [f"ALTER DATABASE {ident(db)} OWNER TO {ident(body.role)}"] + [o["sql"] for o in plan["objects"]]
+        if body.dry_run:
+            return {"ok": True, "dry_run": True, "statements": stmts}
+        admin = await pools.get()
+        async with admin.acquire() as conn:
+            try:
+                await conn.execute(f"GRANT {ident(body.role)} TO current_user")
+            except asyncpg.PostgresError:
+                pass
+            await conn.execute(stmts[0])
+        async with (await pools.get(db)).acquire() as conn:
+            res = await ownership.transfer(conn, body.role)
+        return {"ok": not res["failed"], "statements": stmts[:1] + res["statements"], "failed": res["failed"]}
+
     r, s, d = ident(body.role), ident(body.schema_name), ident(db)
-    table_privs = {"read": "SELECT", "write": "SELECT, INSERT, UPDATE, DELETE", "all": "ALL PRIVILEGES"}
-    seq_privs = {"read": "SELECT", "write": "USAGE, SELECT", "all": "ALL PRIVILEGES"}
-    stmts: list[str] = []
-    if body.level == "none":
-        stmts += [
-            f"ALTER DEFAULT PRIVILEGES IN SCHEMA {s} REVOKE ALL ON TABLES FROM {r}",
-            f"ALTER DEFAULT PRIVILEGES IN SCHEMA {s} REVOKE ALL ON SEQUENCES FROM {r}",
-            f"REVOKE ALL ON ALL TABLES IN SCHEMA {s} FROM {r}",
-            f"REVOKE ALL ON ALL SEQUENCES IN SCHEMA {s} FROM {r}",
-            f"REVOKE ALL ON SCHEMA {s} FROM {r}",
-        ]
+    presets = {"read": ["SELECT"], "write": ["SELECT", "INSERT", "UPDATE", "DELETE"], "all": list(TABLE_PRIVILEGES)}
+    if body.level == "custom":
+        privs = [p.upper() for p in body.privileges]
+        bad = [p for p in privs if p not in TABLE_PRIVILEGES]
+        if bad:
+            raise HTTPException(400, f"Unknown privilege(s): {', '.join(bad)}")
+        privs = [p for p in TABLE_PRIVILEGES if p in privs]  # canonical order, no duplicates
+        tables, sequences, functions = body.tables, body.sequences, body.functions
+        schema_create, temp, future, wgo = body.schema_create, body.temp, body.future, body.grant_option
     else:
-        stmts += [
-            f"GRANT CONNECT ON DATABASE {d} TO {r}",
-            f"GRANT USAGE{', CREATE' if body.level == 'all' else ''} ON SCHEMA {s} TO {r}",
-            f"GRANT {table_privs[body.level]} ON ALL TABLES IN SCHEMA {s} TO {r}",
-            f"GRANT {seq_privs[body.level]} ON ALL SEQUENCES IN SCHEMA {s} TO {r}",
-            f"ALTER DEFAULT PRIVILEGES IN SCHEMA {s} GRANT {table_privs[body.level]} ON TABLES TO {r}",
-            f"ALTER DEFAULT PRIVILEGES IN SCHEMA {s} GRANT {seq_privs[body.level]} ON SEQUENCES TO {r}",
-        ]
+        privs = presets.get(body.level, [])
+        tables, sequences, functions = None, True, body.level == "all"
+        schema_create, temp, future, wgo = body.level == "all", False, True, False
+    table_privs = "ALL PRIVILEGES" if privs == list(TABLE_PRIVILEGES) else ", ".join(privs)
+    writes = any(p in privs for p in ("INSERT", "UPDATE", "DELETE"))
+    seq_privs = ("USAGE, SELECT, UPDATE" if writes else "USAGE, SELECT") if privs else ""
+    w = " WITH GRANT OPTION" if wgo else ""
+
     pool = await pools.get(db)
     async with pool.acquire() as conn:
+        me, owner = await conn.fetchrow(
+            "SELECT current_user, pg_get_userbyid(datdba) FROM pg_database WHERE datname = current_database()")
+        # Default privileges only apply to objects created by the named role, so
+        # cover both creators: the panel itself and the database owner.
+        creators = [c for c in dict.fromkeys([me, owner]) if c and c != body.role]
+        owned = {row["relname"] for row in await conn.fetch(
+            """SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = $1 AND c.relkind IN ('r','p','v','m','f','S') AND pg_get_userbyid(c.relowner) = $2""",
+            body.schema_name, body.role)}
+        if tables is not None:
+            existing = {row["relname"] for row in await conn.fetch(
+                """SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = $1 AND c.relkind IN ('r','p','v','m','f')""", body.schema_name)}
+            missing = [t for t in tables if t not in existing]
+            if missing:
+                raise HTTPException(404, f"Not found in {body.schema_name}: {', '.join(missing)}")
+            if not tables:
+                raise HTTPException(400, "Pick at least one table, or choose 'All tables'")
+
+        def defaults(action: str) -> list[str]:
+            out = []
+            for c in creators:
+                pre = f"ALTER DEFAULT PRIVILEGES FOR ROLE {ident(c)} IN SCHEMA {s}"
+                if action == "revoke":
+                    out += [f"{pre} REVOKE ALL ON TABLES FROM {r}", f"{pre} REVOKE ALL ON SEQUENCES FROM {r}",
+                            f"{pre} REVOKE ALL ON FUNCTIONS FROM {r}"]
+                else:
+                    if privs:
+                        out.append(f"{pre} GRANT {table_privs} ON TABLES TO {r}{w}")
+                        if sequences:
+                            out.append(f"{pre} GRANT {seq_privs} ON SEQUENCES TO {r}{w}")
+                    if functions:
+                        out.append(f"{pre} GRANT EXECUTE ON FUNCTIONS TO {r}{w}")
+            return out
+
+        stmts: list[str] = []
+        if body.level == "none":
+            if owned:
+                raise HTTPException(400, f"{body.role} owns {len(owned)} object(s) in {body.schema_name}; transfer them to another role first.")
+            stmts += defaults("revoke") + [
+                f"REVOKE ALL ON ALL TABLES IN SCHEMA {s} FROM {r}",
+                f"REVOKE ALL ON ALL SEQUENCES IN SCHEMA {s} FROM {r}",
+                f"REVOKE ALL ON SCHEMA {s} FROM {r}",
+                f"REVOKE CONNECT, CREATE, TEMPORARY ON DATABASE {d} FROM {r}",
+            ]
+        else:
+            stmts.append(f"GRANT CONNECT{', TEMPORARY' if temp else ''} ON DATABASE {d} TO {r}")
+            if not temp and body.level == "custom":
+                stmts.append(f"REVOKE TEMPORARY ON DATABASE {d} FROM {r}")
+            stmts.append(f"GRANT USAGE{', CREATE' if schema_create else ''} ON SCHEMA {s} TO {r}")
+            if not schema_create and not owned:
+                stmts.append(f"REVOKE CREATE ON SCHEMA {s} FROM {r}")
+            if tables is None:
+                # replace whatever the role had (so lowering a level takes effect), unless it owns things here
+                if not owned:
+                    stmts += [f"REVOKE ALL ON ALL TABLES IN SCHEMA {s} FROM {r}",
+                              f"REVOKE ALL ON ALL SEQUENCES IN SCHEMA {s} FROM {r}"]
+                if privs:
+                    stmts.append(f"GRANT {table_privs} ON ALL TABLES IN SCHEMA {s} TO {r}{w}")
+                    if sequences:
+                        stmts.append(f"GRANT {seq_privs} ON ALL SEQUENCES IN SCHEMA {s} TO {r}{w}")
+            else:
+                for t in tables:
+                    q = f"{s}.{ident(t)}"
+                    if t not in owned:
+                        stmts.append(f"REVOKE ALL ON TABLE {q} FROM {r}")
+                    if privs:
+                        stmts.append(f"GRANT {table_privs} ON TABLE {q} TO {r}{w}")
+                if sequences and privs:
+                    # only the sequences behind the chosen tables' serial/identity columns
+                    seqs = await conn.fetch(
+                        """SELECT DISTINCT sq.relname FROM pg_depend dp
+                           JOIN pg_class sq ON sq.oid = dp.objid AND sq.relkind = 'S'
+                           JOIN pg_class tb ON tb.oid = dp.refobjid
+                           JOIN pg_namespace n ON n.oid = tb.relnamespace
+                           WHERE dp.deptype IN ('a', 'i') AND n.nspname = $1 AND tb.relname = ANY($2::text[])""",
+                        body.schema_name, tables)
+                    for sq in seqs:
+                        stmts.append(f"GRANT {seq_privs} ON SEQUENCE {s}.{ident(sq['relname'])} TO {r}{w}")
+            if functions:
+                stmts.append(f"GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {s} TO {r}{w}")
+            if tables is None:
+                stmts += defaults("revoke")
+                if future:
+                    stmts += defaults("grant")
+
+        if body.dry_run:
+            return {"ok": True, "dry_run": True, "statements": stmts}
         async with conn.transaction():
             for st in stmts:
                 await conn.execute(st)
-    return {"ok": True, "statements": stmts}
+    note = None
+    if body.role == owner and body.level != "custom":
+        note = (f"{body.role} owns this database. Grants don't let it ALTER tables owned by other roles — "
+                "use the 'Owner' level (or Access → Transfer ownership) so migrations work.")
+    return {"ok": True, "statements": stmts, "note": note}
 
 
 @router.get("/db/{db}/privileges")
