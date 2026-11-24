@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import catalog
+from .. import ownership
 from ..auth import require_auth
 from ..db import pools
 from ..sqlutil import check_expr, check_type, ident, literal, qualified, to_json_value
@@ -56,10 +57,11 @@ class CreateSchema(BaseModel):
 @router.post("/schemas", status_code=201)
 async def create_schema(db: str, body: CreateSchema):
     sql = f"CREATE SCHEMA {ident(body.name)}"
-    if body.owner:
-        sql += f" AUTHORIZATION {ident(body.owner)}"
     pool = await pools.get(db)
     async with pool.acquire() as conn:
+        owner = body.owner or await ownership.database_owner(conn)
+        if owner:
+            sql += f" AUTHORIZATION {ident(owner)}"
         await conn.execute(sql)
     return {"name": body.name}
 
@@ -238,7 +240,9 @@ async def create_table(db: str, body: CreateTable):
         async with conn.transaction():
             for s in stmts:
                 await conn.execute(s)
-    return {"schema": body.schema_name, "name": body.name, "sql": ";\n".join(stmts) + ";"}
+            # the database owner (the app's login) must own it, or its migrations can't ALTER it
+            owner = await ownership.give_to_owner(conn, qualified(body.schema_name, body.name))
+    return {"schema": body.schema_name, "name": body.name, "owner": owner, "sql": ";\n".join(stmts) + ";"}
 
 
 @router.get("/tables/{schema}/{table}")
