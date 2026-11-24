@@ -1051,37 +1051,152 @@ const GRANT_LEVELS = [
   ['read', 'Read only — SELECT'],
   ['write', 'Read & write — SELECT, INSERT, UPDATE, DELETE'],
   ['all', 'Full — all privileges + create tables in the schema'],
+  ['custom', 'Custom — pick privileges, tables and options'],
   ['owner', 'Owner — owns the database and every object (needed to run migrations)'],
   ['none', 'Revoke all'],
 ];
+const TABLE_PRIVS = [
+  ['SELECT', 'read rows'], ['INSERT', 'add rows'], ['UPDATE', 'change rows'], ['DELETE', 'remove rows'],
+  ['TRUNCATE', 'empty tables'], ['REFERENCES', 'create foreign keys to them'], ['TRIGGER', 'create triggers'],
+];
+const PRIV_PRESETS = { read: ['SELECT'], write: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'], all: TABLE_PRIVS.map(p => p[0]) };
+
 async function grantModal(role, preset = {}) {
   const dbSel = select(state.dbs.filter(d => d.can_connect).map(d => d.name), preset.db || state.db);
   const schemaSel = select([preset.schema || 'public'], preset.schema || 'public');
+  const level = select(GRANT_LEVELS, preset.level || 'read');
+  let touched = !!preset.level;
+  level.addEventListener('change', () => { touched = true; });
+
+  // ---- custom options
+  const privBoxes = TABLE_PRIVS.map(([p, hint]) => { const c = checkbox(h('span', null, h('span', { class: 'mono' }, p), h('span', { class: 'faint' }, ' · ' + hint)), p === 'SELECT'); c.priv = p; return c; });
+  const presetBtns = h('div', { class: 'row', style: { gap: '6px' } }, h('span', { class: 'faint small' }, 'Quick pick:'),
+    ...Object.entries(PRIV_PRESETS).map(([k, list]) => btn({ read: 'Read', write: 'Read & write', all: 'All' }[k], () => privBoxes.forEach(c => { c.input.checked = list.includes(c.priv); }), { class: 'sm' })),
+    btn('None', () => privBoxes.forEach(c => { c.input.checked = false; }), { class: 'sm ghost' }));
+  const scopeAll = h('input', { type: 'radio', name: 'gscope', checked: true });
+  const scopeSome = h('input', { type: 'radio', name: 'gscope' });
+  const tableFilter = h('input', { class: 'input sm', placeholder: 'Filter tables' });
+  const tableList = h('div', { class: 'history', style: { maxHeight: '200px', padding: '4px 0' } });
+  let tableBoxes = [];
+  const drawTables = () => {
+    const f = tableFilter.value.toLowerCase();
+    tableBoxes.forEach(c => { c.style.display = !f || c.table.toLowerCase().includes(f) ? '' : 'none'; });
+  };
+  tableFilter.addEventListener('input', drawTables);
+  const loadTables = async () => {
+    clear(tableList).appendChild(h('div', { class: 'faint small', style: { padding: '6px 12px' } }, 'Loading…'));
+    try {
+      const ts = await GET(`/api/db/${enc(dbSel.value)}/tables${qs({ schema: schemaSel.value })}`);
+      tableBoxes = ts.map(t => { const c = checkbox(h('span', { class: 'mono' }, t.name, t.kind === 'v' || t.kind === 'm' ? h('span', { class: 'faint' }, ' (view)') : ''), false); c.table = t.name; c.style.display = 'flex'; c.style.padding = '4px 12px'; return c; });
+      clear(tableList);
+      if (!tableBoxes.length) tableList.appendChild(h('div', { class: 'faint small', style: { padding: '6px 12px' } }, 'No tables in this schema.'));
+      append(tableList, tableBoxes);
+      drawTables();
+    } catch (e) { clear(tableList).appendChild(h('div', { class: 'faint small', style: { padding: '6px 12px' } }, e.message)); }
+  };
+  const tablePick = h('div', { class: 'stack', style: { gap: '6px' } },
+    h('div', { class: 'row', style: { gap: '6px' } }, tableFilter,
+      btn('All', () => tableBoxes.forEach(c => { if (c.style.display !== 'none') c.input.checked = true; }), { class: 'sm' }),
+      btn('None', () => tableBoxes.forEach(c => { c.input.checked = false; }), { class: 'sm ghost' })),
+    tableList);
+  const syncScope = () => { tablePick.style.display = scopeSome.checked ? '' : 'none'; future.style.opacity = scopeSome.checked ? '.45' : ''; future.input.disabled = scopeSome.checked; };
+  scopeAll.addEventListener('change', syncScope); scopeSome.addEventListener('change', syncScope);
+  const sequences = checkbox('Sequences too (needed to INSERT into serial / identity columns)', true);
+  const functions = checkbox('EXECUTE on all functions in the schema');
+  const schemaCreate = checkbox('CREATE on the schema (can make its own tables, views, functions)');
+  const temp = checkbox('TEMPORARY on the database (temp tables)');
+  const future = checkbox('Apply to tables created later (default privileges, incl. tables from migrations)', true);
+  const grantOpt = checkbox('WITH GRANT OPTION (may pass these privileges on to other roles)');
+  const custom = h('div', { class: 'stack', style: { gap: '12px', padding: '14px', border: '1px solid var(--border)', borderRadius: 'var(--radius)' } },
+    h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'k small', style: { fontWeight: 600 } }, 'Table privileges'), presetBtns, ...privBoxes),
+    h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'k small', style: { fontWeight: 600 } }, 'Applies to'),
+      h('label', { class: 'check' }, scopeAll, 'All tables in the schema'),
+      h('label', { class: 'check' }, scopeSome, 'Only selected tables'), tablePick),
+    h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'k small', style: { fontWeight: 600 } }, 'Options'), sequences, functions, schemaCreate, temp, future, grantOpt));
+  syncScope();
+
+  // ---- current access, read live from Postgres
+  const current = h('div', { class: 'kv', style: { border: '1px solid var(--border)', borderRadius: 'var(--radius)' } });
+  const loadCurrent = async () => {
+    clear(current).appendChild(h('div', null, h('div', { class: 'k' }, 'Current access'), h('span', { class: 'spinner' })));
+    try {
+      const a = await GET(`/api/db/${enc(dbSel.value)}/access${qs({ role })}`);
+      const ro = a.roles[0];
+      if (!ro) { clear(current); return; }
+      const sch = ro.schemas[schemaSel.value];
+      let lvl, label;
+      if (ro.superuser) { lvl = null; label = 'Superuser — bypasses every permission check'; }
+      else if (ro.is_owner && ro.can_migrate) { lvl = 'owner'; label = `Owner of ${dbSel.value} and all ${ro.tables_total} table(s) — can run migrations`; }
+      else if (!sch || ['none', 'usage'].includes(sch.level)) { lvl = 'none'; label = ro.is_owner ? 'Owns the database but none of the tables here' : 'No access in this schema'; }
+      else {
+        lvl = { owner: 'all', all: 'all', write: 'write', read: 'read', partial: 'custom' }[sch.level] || null;
+        label = (LEVEL_UI[sch.level] || [sch.level])[0] + ` — ${sch.can_select} readable · ${sch.can_write} writable · ${sch.owned} owned of ${sch.tables} table(s)`;
+      }
+      clear(current);
+      append(current, [
+        h('div', null, h('div', { class: 'k' }, 'Current access', h('small', null, label)),
+          ro.superuser ? h('span', { class: 'badge warn' }, 'superuser') : lvl === 'owner' ? h('span', { class: 'badge accent' }, 'owner') : levelBadge(sch, false)),
+        h('div', null, h('div', { class: 'k' }, 'Can run migrations'), migrateBadge(ro)),
+        ro.defaults.length ? h('div', null, h('div', { class: 'k' }, 'Future tables'), defaultsSummary(ro.defaults)) : null,
+      ]);
+      if (!touched && lvl && lvl !== 'none') { level.value = lvl; syncLevel(); }
+    } catch (e) { clear(current).appendChild(h('div', null, h('div', { class: 'k' }, 'Current access'), h('span', { class: 'faint' }, e.message))); }
+  };
+
   const loadSchemas = async () => {
     try {
       const ss = await GET(`/api/db/${enc(dbSel.value)}/schemas`);
       const keep = schemaSel.value;
-      clear(schemaSel); append(schemaSel, ss.map(s => h('option', { value: s.name }, s.name)));
-      if (ss.some(s => s.name === keep)) schemaSel.value = keep;
+      clear(schemaSel); append(schemaSel, ss.map(x => h('option', { value: x.name }, x.name)));
+      if (ss.some(x => x.name === keep)) schemaSel.value = keep;
     } catch (e) { toastErr(e); }
   };
-  dbSel.addEventListener('change', loadSchemas); loadSchemas();
-  const level = select(GRANT_LEVELS, preset.level || 'read');
+  dbSel.addEventListener('change', async () => { await loadSchemas(); loadCurrent(); loadTables(); });
+  schemaSel.addEventListener('change', () => { loadCurrent(); loadTables(); });
+
   const help = h('div', { class: 'callout info' });
-  const syncHelp = () => {
+  const syncLevel = () => {
     const l = level.value;
     help.textContent = l === 'owner'
       ? `Makes ${role} the owner of ${dbSel.value} and transfers every table, view, sequence, function and schema in it to ${role}. Use this for an app's own login: Postgres only lets an object's owner ALTER or DROP it, so migrations need it.`
       : l === 'none' ? `Removes ${role}'s table, sequence and schema privileges in this schema, its future-table defaults, and its explicit CONNECT on the database.`
-        : `Applies to every existing table and sequence in the schema, and to tables created later — by the panel or by the database owner (e.g. the app's migrations). Changing the level replaces the previous one.`;
+        : l === 'custom' ? `Replaces ${role}'s privileges on the chosen tables with exactly what's ticked. Use Preview SQL to see every statement first.`
+          : `Applies to every existing table and sequence in the schema, and to tables created later — by the panel or by the database owner (e.g. the app's migrations). Changing the level replaces the previous one.`;
     schemaSel.disabled = l === 'owner';
+    custom.style.display = l === 'custom' ? '' : 'none';
+    if (l === 'custom' && PRIV_PRESETS[preset.from || '']) privBoxes.forEach(c => { c.input.checked = PRIV_PRESETS[preset.from].includes(c.priv); });
   };
-  level.addEventListener('change', syncHelp); syncHelp();
+  level.addEventListener('change', syncLevel);
+  syncLevel();
+  loadSchemas().then(() => { loadCurrent(); loadTables(); });
+
+  const payload = (dry) => {
+    const p = { role, level: level.value, schema: schemaSel.value, dry_run: dry };
+    if (level.value === 'custom') {
+      Object.assign(p, {
+        privileges: privBoxes.filter(c => c.input.checked).map(c => c.priv),
+        tables: scopeSome.checked ? tableBoxes.filter(c => c.input.checked).map(c => c.table) : null,
+        sequences: sequences.input.checked, functions: functions.input.checked, schema_create: schemaCreate.input.checked,
+        temp: temp.input.checked, future: future.input.checked, grant_option: grantOpt.input.checked,
+      });
+    }
+    return p;
+  };
   const res = await modal({
     title: `Access for ${role}`,
     drawer: true,
-    body: [h('div', { class: 'grid2' }, field('Database', dbSel), field('Schema', schemaSel)), field('Access level', level), help],
-    actions: [{ label: 'Cancel' }, { label: 'Apply', primary: true, onClick: () => POST(`/api/db/${enc(dbSel.value)}/grant`, { role, level: level.value, schema: schemaSel.value }) }],
+    body: [h('div', { class: 'grid2' }, field('Database', dbSel), field('Schema', schemaSel)), current, field('Change to', level), custom, help],
+    actions: [
+      { label: 'Preview SQL', left: true, onClick: async () => {
+        const r = await POST(`/api/db/${enc(dbSel.value)}/grant`, payload(true));
+        await modal({ title: `SQL for ${role} (not run yet)`, size: 'mid',
+          body: [h('pre', { class: 'code', style: { maxHeight: '60vh' } }, r.statements.length ? r.statements.join(';\n') + ';' : '-- nothing to change')],
+          actions: [{ label: 'Copy', onClick: () => { copyText(r.statements.join(';\n') + ';'); return false; } }, { label: 'Close', primary: true }] });
+        return false;  // keep the access form open
+      } },
+      { label: 'Cancel' },
+      { label: 'Apply', primary: true, onClick: () => POST(`/api/db/${enc(dbSel.value)}/grant`, payload(false)) },
+    ],
   });
   if (!res) return null;
   toast(res.failed && res.failed.length ? `Updated with ${res.failed.length} error(s)` : `Updated access for ${role}`, res.failed && res.failed.length ? 'error' : 'ok');
