@@ -127,6 +127,37 @@ Search with **⌘K / Ctrl K** to jump to any table, database or page. The theme 
 - **Connection guide** — copyable host/port/database, and step-by-step setups for Docker-network apps, the HTTP data API, DBeaver over SSH and Tailscale.
 - **Roles & permissions** — create roles, reset passwords, toggle LOGIN/CREATEDB/CREATEROLE, connection limits, and **Grant access**: read / write / full / revoke on every table in a schema, including tables created later.
 
+### Ownership & access (why migrations fail with "must be owner")
+
+Postgres only lets an object's **owner** (or a superuser) `ALTER`/`DROP` it —
+`GRANT ALL` does not change that. If a table is owned by the panel's login
+(`uiadmin`) and your app connects as the database owner (`darood`), the app can
+read and write it, but Alembic's `ALTER TABLE … ADD COLUMN` fails with
+`must be owner of table …`.
+
+The panel's rule: **everything in a database belongs to the database owner.**
+
+- **Database → Access & ownership** shows, live from the catalogs, what every
+  role can do per schema (read / read-write / full / owner), whether it **can
+  run migrations**, and its privileges on *future* tables. Objects that break the
+  ownership rule are listed with a one-click **Transfer all to <owner>**
+  (one `ALTER … OWNER TO` per table, view, sequence, function, type and schema;
+  nothing outside that database changes).
+- **Change a database's owner** (Edit database) also transfers every object in it by default.
+- **Grant access** now sets default privileges for tables created by the database
+  owner too (previously only for tables the panel created, so tables made by
+  migrations didn't inherit grants), downgrades properly (write → read), and
+  "Revoke all" also removes CONNECT. The **Owner** level makes a role own the
+  database and everything in it.
+- **New things are owned by the database owner**: New table, New schema,
+  restores with "don't restore owners" (previously all owned by the panel's
+  login — the usual cause of this bug), and the SQL console, which now runs
+  **as the database owner** by default ("Run as" switch next to Run).
+
+Recommended setup per app: one database, owned by the app's login role
+(`darood`), which runs the migrations; give any other services `read` or
+`write` from Access & ownership.
+
 ## 5. Central Redis (merged in)
 
 The old standalone `central_redis` service now lives here: same isolated

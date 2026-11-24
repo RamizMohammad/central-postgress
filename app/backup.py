@@ -40,6 +40,7 @@ import asyncpg
 from fastapi import HTTPException
 
 from . import appkeys
+from . import ownership
 from .config import settings
 from .db import _ssl_mode, pools
 from .sqlutil import ident, literal, to_json_value
@@ -784,6 +785,17 @@ async def run_restore_bundle(job: Job, name: str, plan: dict) -> None:
                 except asyncpg.PostgresError as e:
                     job.log(f"{target}: owner — {e}", warn=True)
             await _post_restore_database(job, conn, target, d, roles_present, roles)
+        if not restore_owners:
+            # --no-owner made the panel's login own everything; hand it to the database owner
+            try:
+                async with (await pools.get(target)).acquire() as tconn:
+                    res = await ownership.transfer(tconn)
+                if res["changed"]:
+                    job.log(f"{target}: {res['changed']} object(s) now owned by {res['target']}")
+                for f in res["failed"][:5]:
+                    job.log(f"{target}: {f['sql']} — {f['error']}", warn=True)
+            except asyncpg.PostgresError as e:
+                job.log(f"{target}: ownership — {e}", warn=True)
         job.done += 1
 
     _reset_caches()

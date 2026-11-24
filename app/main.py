@@ -23,7 +23,7 @@ from .db import pools
 from . import appkeys, backup
 from . import redis_control, redis_core
 from .routers import backup as backup_routes
-from .routers import data_api, keys, redis_admin, redis_api, rows, server, sql, tables
+from .routers import access, data_api, keys, redis_admin, redis_api, rows, server, sql, tables
 
 log = logging.getLogger("central-postgres")
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -213,6 +213,7 @@ app.include_router(sql.router)
 app.include_router(keys.router)
 app.include_router(data_api.router)
 app.include_router(backup_routes.router)
+app.include_router(access.router)
 app.include_router(redis_admin.router)
 app.include_router(redis_api.router)
 
